@@ -1,259 +1,168 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
-    <meta charset="UTF-8">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <meta
-        name="viewport"
-        content="width=device-width, initial-scale=1.0"
-    >
+  <title>SkipFit AI</title>
 
-    <title>SkipFit AI</title>
+  <link rel="stylesheet" href="style.css">
 
-    <link rel="stylesheet" href="style.css">
-
-    <!-- MediaPipe Tasks Vision -->
-    <script
-        type="module"
-        src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22-rc.20250304/vision_bundle.js">
-    </script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5/pose.js"></script>
 </head>
 
 <body>
 
 <header>
-
-    <h1>⚡ SkipFit AI</h1>
-
-    <p class="creator">
-        By Aditya Kumar Yadav
-    </p>
-
-    <p class="tagline">
-        Train • Count • Improve
-    </p>
-
-    <span class="version">
-        ADVANCED BODY TRACKING V5
-    </span>
-
+  <h1>⚡ SkipFit AI</h1>
+  <p class="creator">By Aditya Kumar Yadav</p>
+  <p class="tagline">Train • Count • Improve</p>
+  <span class="version">AI SKIPPING COUNTER V6</span>
 </header>
-
 
 <main>
 
-
-<!-- ================================= -->
-<!-- TODAY'S TASKS -->
-<!-- ================================= -->
-
 <section class="card">
+  <h2>📅 Today's Task</h2>
 
-    <h2>📅 Today's Tasks</h2>
+  <div class="task">
+    <span>🪢 Skipping</span>
+    <strong id="skipTask">0 / 1000</strong>
+  </div>
 
-    <div class="task">
-
-        <span>🪢 Skipping</span>
-
-        <strong id="skipTask">
-            0 / 1000
-        </strong>
-
-    </div>
-
-    <div class="progress">
-
-        <div id="skipProgress"></div>
-
-    </div>
-
+  <div class="progress">
+    <div id="skipProgress"></div>
+  </div>
 </section>
 
 
-<!-- ================================= -->
-<!-- CAMERA -->
-<!-- ================================= -->
-
 <section class="card">
 
-    <h2>📷 AI Camera</h2>
+  <h2>📷 Camera Skipping</h2>
 
-    <div class="cameraBox">
-
-        <video
-            id="camera"
-            autoplay
-            muted
-            playsinline
-        ></video>
-
-        <canvas
-            id="poseCanvas"
-        ></canvas>
-
-    </div>
-
-
-    <div class="cameraButtons">
-
-        <button
-            id="cameraBtn"
-            onclick="openCamera()"
-        >
-            📷 Open Camera
-        </button>
-
-
-        <button
-            id="recordBtn"
-            onclick="toggleRecording()"
-            disabled
-        >
-            🔴 Start Recording
-        </button>
-
-    </div>
-
-
-    <div
-        id="liveCount"
-        class="liveCounter"
-    >
-        0
-    </div>
-
-
-    <p id="cameraStatus">
-        Camera is off.
-    </p>
-
-</section>
-
-
-<!-- ================================= -->
-<!-- RECORDED VIDEO -->
-<!-- ================================= -->
-
-<section class="card">
-
-    <h2>🎥 Recorded Workout</h2>
+  <div class="cameraBox">
 
     <video
-        id="recordedVideo"
-        controls
-        playsinline
-    ></video>
+      id="camera"
+      autoplay
+      muted
+      playsinline>
+    </video>
 
-    <p id="recordStatus">
-        Your recorded workout will appear here.
-    </p>
+    <canvas id="cameraCanvas"></canvas>
+
+  </div>
+
+  <button id="openCameraBtn">
+    📷 Open Camera
+  </button>
+
+  <button
+    id="recordBtn"
+    disabled>
+    🔴 Start Recording
+  </button>
+
+  <div class="bigCount" id="liveCount">
+    0
+  </div>
+
+  <p id="cameraStatus">
+    Open the camera to start.
+  </p>
 
 </section>
 
-
-<!-- ================================= -->
-<!-- SKIP COUNT -->
-<!-- ================================= -->
 
 <section class="card">
 
-    <h2>🪢 Skip Counter</h2>
+  <h2>📁 Choose Skipping Video</h2>
 
-    <div
-        id="skipCount"
-        class="counter"
-    >
-        0
-    </div>
+  <input
+    type="file"
+    id="videoFile"
+    accept="video/*">
 
-    <p class="small">
-        AI detected skips
-    </p>
+  <video
+    id="fileVideo"
+    controls
+    playsinline>
+  </video>
 
-    <button
-        onclick="analyzeRecordedVideo()"
-    >
-        🧠 Analyze Recorded Video
-    </button>
+  <button
+    id="analyzeFileBtn"
+    disabled>
+    🧠 Count Skips in Video
+  </button>
 
-    <p id="analysisStatus">
-        Record a workout first.
-    </p>
+  <div class="bigCount" id="fileCount">
+    0
+  </div>
+
+  <p id="fileStatus">
+    Choose a skipping video.
+  </p>
 
 </section>
 
-
-<!-- ================================= -->
-<!-- PROGRESS -->
-<!-- ================================= -->
 
 <section class="card">
 
-    <h2>📊 My Progress</h2>
+  <h2>🎥 Recorded Video</h2>
 
-    <div class="stats">
+  <video
+    id="recordedVideo"
+    controls
+    playsinline>
+  </video>
 
-        <div>
-
-            <span>
-                Total Skips
-            </span>
-
-            <strong id="totalSkips">
-                0
-            </strong>
-
-        </div>
-
-    </div>
+  <p id="recordStatus">
+    Your recording will appear here.
+  </p>
 
 </section>
 
 
-<!-- ================================= -->
-<!-- TIPS -->
-<!-- ================================= -->
+<section class="card">
+
+  <h2>📊 Progress</h2>
+
+  <div class="stats">
+
+    <div>
+      <span>Total Skips</span>
+      <strong id="totalSkips">0</strong>
+    </div>
+
+  </div>
+
+</section>
+
 
 <section class="card tips">
 
-    <h2>🎯 Best AI Setup</h2>
+  <h2>🎯 Best Setup</h2>
 
-    <p>✓ Keep the phone stable.</p>
-
-    <p>✓ Keep your complete body visible.</p>
-
-    <p>✓ Use good lighting.</p>
-
-    <p>✓ Keep some space above your head.</p>
-
-    <p>✓ Keep both feet visible.</p>
-
-    <p>✓ Don't let another person cross the camera.</p>
+  <p>✓ Keep your complete body visible.</p>
+  <p>✓ Keep both feet visible.</p>
+  <p>✓ Keep the phone stable.</p>
+  <p>✓ Use good lighting.</p>
+  <p>✓ Stand far enough from the camera.</p>
+  <p>✓ Test with a short clip first.</p>
 
 </section>
-
 
 </main>
 
 
 <footer>
-
-    <p>⚡ SkipFit AI</p>
-
-    <p>
-        Created by Aditya Kumar Yadav
-    </p>
-
-    <small>
-        Advanced AI movement tracking
-    </small>
-
+  <p>⚡ SkipFit AI</p>
+  <p>Created by Aditya Kumar Yadav</p>
+  <small>AI movement tracking</small>
 </footer>
 
 
 <script src="script.js"></script>
 
 </body>
-
 </html>

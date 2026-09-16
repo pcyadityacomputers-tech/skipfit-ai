@@ -7,133 +7,147 @@
   <title>SkipFit AI - Aditya Kumar Yadav</title>
 
   <link rel="stylesheet" href="style.css">
+
+  <!-- TensorFlow.js -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+
+  <!-- MoveNet -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection"></script>
 </head>
 
 <body>
 
-  <header>
-    <h1>⚡ SkipFit AI</h1>
-    <p class="creator">By Aditya Kumar Yadav</p>
-    <p class="tagline">Train. Count. Improve.</p>
-  </header>
+<header>
+  <h1>⚡ SkipFit AI</h1>
+  <p class="creator">By Aditya Kumar Yadav</p>
+  <p class="tagline">Train • Count • Improve</p>
+  <span class="version">AI MOVEMENT TRACKING V2</span>
+</header>
 
-  <main>
+<main>
 
-    <!-- DAILY TASKS -->
-    <section class="card">
-      <h2>📅 Today's Tasks</h2>
+<section class="card">
+  <h2>📅 Today's Tasks</h2>
 
-      <div class="task">
-        <span>🪢 Skipping</span>
-        <strong id="skipTask">0 / 1000</strong>
-      </div>
+  <div class="task">
+    <span>🪢 Skipping</span>
+    <strong id="skipTask">0 / 1000</strong>
+  </div>
 
-      <div class="task">
-        <span>💪 Push-ups</span>
-        <strong id="pushTask">0 / 50</strong>
-      </div>
+  <div class="progress">
+    <div id="skipProgress"></div>
+  </div>
 
-      <div class="progress">
-        <div id="skipProgress"></div>
-      </div>
+  <div class="task">
+    <span>💪 Push-ups</span>
+    <strong id="pushTask">0 / 50</strong>
+  </div>
 
-      <div class="progress">
-        <div id="pushProgress"></div>
-      </div>
-    </section>
-
-
-    <!-- SKIPPING -->
-    <section class="card">
-      <h2>🪢 Skipping Counter</h2>
-
-      <div class="counter" id="skipCount">0</div>
-      <p>Maximum: 10,000+</p>
-
-      <div class="buttons">
-        <button onclick="addSkip()">+1 Skip</button>
-        <button onclick="resetSkip()">Reset</button>
-      </div>
-
-      <hr>
-
-      <h3>🎥 Video Analysis</h3>
-
-      <input
-        type="file"
-        id="skipVideo"
-        accept="video/*"
-      >
-
-      <button onclick="analyzeVideo()">
-        Analyze Skipping Video
-      </button>
-
-      <p id="videoStatus">
-        Upload a clear full-body video.
-      </p>
-    </section>
+  <div class="progress">
+    <div id="pushProgress"></div>
+  </div>
+</section>
 
 
-    <!-- PUSH UPS -->
-    <section class="card">
-      <h2>💪 Push-up Counter</h2>
+<section class="card">
+  <h2>🪢 AI Skipping Counter</h2>
 
-      <div class="counter" id="pushCount">0</div>
+  <div class="counter" id="skipCount">0</div>
 
-      <div class="buttons">
-        <button onclick="addPush()">+1 Push-up</button>
-        <button onclick="resetPush()">Reset</button>
-      </div>
+  <p class="small">
+    Maximum display: 10,000+
+  </p>
 
-      <hr>
+  <input
+    type="file"
+    id="skipVideo"
+    accept="video/*"
+  >
 
-      <h3>🎥 Push-up Video</h3>
+  <button onclick="analyzeSkipping()">
+    🧠 Analyze Skipping Video
+  </button>
 
-      <input
-        type="file"
-        id="pushVideo"
-        accept="video/*"
-      >
+  <p id="skipStatus">
+    Upload a full-body skipping video.
+  </p>
 
-      <button onclick="analyzePushVideo()">
-        Analyze Push-up Video
-      </button>
-
-      <p id="pushStatus">
-        Keep your complete body visible.
-      </p>
-    </section>
-
-
-    <!-- PROGRESS -->
-    <section class="card">
-      <h2>📊 My Progress</h2>
-
-      <div class="stats">
-        <div>
-          <span>Total Skips</span>
-          <strong id="totalSkips">0</strong>
-        </div>
-
-        <div>
-          <span>Total Push-ups</span>
-          <strong id="totalPushups">0</strong>
-        </div>
-      </div>
-    </section>
-
-  </main>
+  <video
+    id="skipVideoPreview"
+    controls
+    playsinline
+  ></video>
+</section>
 
 
-  <footer>
-    <p>SkipFit AI</p>
-    <p>Created by Aditya Kumar Yadav</p>
-    <small>Keep training consistently.</small>
-  </footer>
+<section class="card">
+  <h2>💪 AI Push-up Counter</h2>
+
+  <div class="counter" id="pushCount">0</div>
+
+  <input
+    type="file"
+    id="pushVideo"
+    accept="video/*"
+  >
+
+  <button onclick="analyzePushups()">
+    🧠 Analyze Push-up Video
+  </button>
+
+  <p id="pushStatus">
+    Upload a video with your complete body visible.
+  </p>
+
+  <video
+    id="pushVideoPreview"
+    controls
+    playsinline
+  ></video>
+</section>
 
 
-  <script src="script.js"></script>
+<section class="card">
+  <h2>📊 My Progress</h2>
+
+  <div class="stats">
+
+    <div>
+      <span>Total Skips</span>
+      <strong id="totalSkips">0</strong>
+    </div>
+
+    <div>
+      <span>Total Push-ups</span>
+      <strong id="totalPushups">0</strong>
+    </div>
+
+  </div>
+</section>
+
+
+<section class="card tips">
+  <h2>🎯 Best Recording Setup</h2>
+
+  <p>✓ Keep the phone stable.</p>
+  <p>✓ Keep your complete body visible.</p>
+  <p>✓ Use good lighting.</p>
+  <p>✓ Stand far enough from the camera.</p>
+  <p>✓ Record from the side for push-ups.</p>
+  <p>✓ Avoid people crossing in front of you.</p>
+</section>
+
+</main>
+
+
+<footer>
+  <p>⚡ SkipFit AI</p>
+  <p>Created by Aditya Kumar Yadav</p>
+  <small>AI movement tracking • V2</small>
+</footer>
+
+
+<script src="script.js"></script>
 
 </body>
-  </html>
+</html>

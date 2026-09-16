@@ -1,201 +1,124 @@
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
+*{
+  box-sizing:border-box;
 }
 
-body {
-  font-family: Arial, sans-serif;
-  background: #070b12;
-  color: white;
-  min-height: 100vh;
+body{
+  margin:0;
+  font-family:Arial,sans-serif;
+  background:#07111f;
+  color:white;
 }
 
-header {
-  text-align: center;
-  padding: 30px 15px;
-  background: #111827;
-  border-bottom: 1px solid #263244;
+header{
+  text-align:center;
+  padding:25px 15px;
+  background:#0d1b2d;
 }
 
-header h1 {
-  font-size: 36px;
-  margin-bottom: 8px;
+header h1{
+  margin:0;
+  font-size:34px;
 }
 
-.creator {
-  font-size: 17px;
-  font-weight: bold;
+header p{
+  margin:7px 0;
+  color:#9fb3c8;
 }
 
-.tagline {
-  color: #aab4c5;
-  margin-top: 8px;
+header span{
+  font-weight:bold;
 }
 
-.version {
-  display: inline-block;
-  margin-top: 14px;
-  padding: 7px 13px;
-  border-radius: 20px;
-  background: #182131;
-  color: #60a5fa;
-  font-size: 11px;
-  font-weight: bold;
+main{
+  max-width:700px;
+  margin:auto;
+  padding:15px;
 }
 
-main {
-  max-width: 650px;
-  margin: auto;
-  padding: 15px;
+.card{
+  background:#101f32;
+  border-radius:18px;
+  padding:18px;
+  margin-bottom:18px;
+  text-align:center;
 }
 
-.card {
-  background: #111827;
-  border: 1px solid #263244;
-  border-radius: 18px;
-  padding: 20px;
-  margin-bottom: 18px;
+h2{
+  margin-top:0;
 }
 
-.card h2 {
-  margin-bottom: 18px;
+#status,#fileStatus{
+  color:#9fb3c8;
+  margin:10px;
 }
 
-.task {
-  display: flex;
-  justify-content: space-between;
-  padding: 15px;
-  background: #182131;
-  border-radius: 12px;
+.counter{
+  font-size:70px;
+  font-weight:bold;
+  margin:5px;
 }
 
-.progress {
-  height: 9px;
-  background: #273244;
-  border-radius: 20px;
-  overflow: hidden;
-  margin-top: 12px;
+.counter.small{
+  font-size:55px;
 }
 
-.progress div {
-  width: 0%;
-  height: 100%;
-  background: #22c55e;
-  transition: width .2s;
+.progressNumber{
+  font-size:50px;
+  font-weight:bold;
 }
 
-.cameraBox {
-  position: relative;
-  width: 100%;
-  aspect-ratio: 3 / 4;
-  background: black;
-  border-radius: 15px;
-  overflow: hidden;
+video{
+  width:100%;
+  max-height:500px;
+  background:black;
+  border-radius:15px;
+  margin-top:10px;
 }
 
-#camera {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
+#canvas{
+  display:none;
 }
 
-#cameraCanvas {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
+button{
+  border:0;
+  border-radius:12px;
+  padding:13px 16px;
+  margin:5px;
+  background:#1677ff;
+  color:white;
+  font-size:15px;
+  font-weight:bold;
 }
 
-button {
-  width: 100%;
-  border: 0;
-  border-radius: 12px;
-  padding: 15px;
-  margin-top: 10px;
-  background: #2563eb;
-  color: white;
-  font-size: 16px;
-  font-weight: bold;
+button:active{
+  transform:scale(.97);
 }
 
-button:disabled {
-  opacity: .45;
+input{
+  width:100%;
+  padding:14px;
+  background:white;
+  border-radius:10px;
+  margin:10px 0;
 }
 
-input[type="file"] {
-  width: 100%;
-  padding: 12px;
-  background: #182131;
-  color: white;
-  border-radius: 10px;
+hr{
+  border:0;
+  border-top:1px solid #29415d;
+  margin:18px 0;
 }
 
-video {
-  width: 100%;
-  max-height: 500px;
-  margin-top: 12px;
-  border-radius: 12px;
-  background: black;
-}
+@media(max-width:500px){
+  header h1{
+    font-size:29px;
+  }
 
-#fileVideo,
-#recordedVideo {
-  display: none;
-}
+  .counter{
+    font-size:60px;
+  }
 
-.bigCount {
-  text-align: center;
-  font-size: 70px;
-  font-weight: bold;
-  margin: 15px 0;
-}
-
-#cameraStatus,
-#fileStatus,
-#recordStatus {
-  color: #aab4c5;
-  line-height: 1.5;
-  margin-top: 12px;
-}
-
-.stats div {
-  text-align: center;
-  padding: 20px;
-  background: #182131;
-  border-radius: 12px;
-}
-
-.stats span {
-  display: block;
-  color: #aab4c5;
-  margin-bottom: 8px;
-}
-
-.stats strong {
-  font-size: 32px;
-}
-
-.tips p {
-  color: #c2cada;
-  margin: 10px 0;
-}
-
-footer {
-  text-align: center;
-  padding: 30px 15px;
-  color: #9ca8ba;
-}
-
-footer p:first-child {
-  color: white;
-  font-size: 18px;
-  font-weight: bold;
-}
-
-@media (max-width: 500px) {
-  header h1 {
-    font-size: 31px;
+  button{
+    width:100%;
+    margin:5px 0;
   }
 }

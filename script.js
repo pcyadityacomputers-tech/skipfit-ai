@@ -1,8 +1,10 @@
-// SkipFit AI V2.3 - AI DIAGNOSTIC TEST
+// SkipFit AI V2.4
+// Frame-by-frame skipping counter
 
 const skipVideo = document.getElementById("skipVideo");
 const skipPreview = document.getElementById("skipVideoPreview");
 const skipStatus = document.getElementById("skipStatus");
+
 const skipCountEl = document.getElementById("skipCount");
 const totalSkipsEl = document.getElementById("totalSkips");
 const skipTask = document.getElementById("skipTask");
@@ -11,7 +13,23 @@ const skipProgress = document.getElementById("skipProgress");
 let skipCount = Number(localStorage.getItem("skipCount") || 0);
 let detector = null;
 
+let processing = false;
+let frameCount = 0;
+let bodyDetected = 0;
+
+let previousAnkleY = null;
+let previousMovement = null;
+
+let jumping = false;
+let lastCountTime = -1;
+
+
+// -------------------------------
+// SCREEN
+// -------------------------------
+
 function updateScreen() {
+
     if (skipCountEl)
         skipCountEl.textContent = skipCount;
 
@@ -30,9 +48,9 @@ function updateScreen() {
 updateScreen();
 
 
-// ===============================
-// VIDEO SELECTION
-// ===============================
+// -------------------------------
+// VIDEO SELECT
+// -------------------------------
 
 if (skipVideo) {
 
@@ -42,51 +60,42 @@ if (skipVideo) {
 
         if (!file) return;
 
-        const url = URL.createObjectURL(file);
+        skipPreview.src =
+            URL.createObjectURL(file);
 
-        skipPreview.src = url;
         skipPreview.style.display = "block";
 
         skipStatus.innerHTML =
             "✅ Video selected.<br>" +
-            "File: " + file.name;
+            file.name;
     });
 }
 
 
-// ===============================
-// LOAD AI
-// ===============================
+// -------------------------------
+// LOAD MOVENET
+// -------------------------------
 
 async function loadAI() {
 
     skipStatus.innerHTML =
-        "1️⃣ Checking AI libraries...";
+        "🤖 Loading body-tracking AI...";
 
     if (!window.tf) {
 
         skipStatus.innerHTML =
-            "❌ TensorFlow.js is NOT loaded.<br>" +
-            "Your index.html needs the TensorFlow script.";
+            "❌ TensorFlow.js not loaded.";
 
-        return null;
+        return false;
     }
-
-    skipStatus.innerHTML =
-        "2️⃣ TensorFlow.js found.<br>" +
-        "Version: " + tf.version.tfjs;
 
     if (!window.poseDetection) {
 
         skipStatus.innerHTML =
-            "❌ Pose Detection library is NOT loaded.";
+            "❌ Pose Detection library not loaded.";
 
-        return null;
+        return false;
     }
-
-    skipStatus.innerHTML =
-        "3️⃣ Pose Detection library found.<br>" +
-        "Loading MoveNet...";
 
     try {
 
@@ -102,215 +111,306 @@ async function loadAI() {
             );
 
         skipStatus.innerHTML =
-            "✅ MoveNet AI loaded successfully!";
+            "✅ MoveNet ready.<br>" +
+            "Starting frame-by-frame analysis...";
 
-        return detector;
+        return true;
 
     } catch (error) {
 
         console.error(error);
 
         skipStatus.innerHTML =
-            "❌ MoveNet failed to load.<br>" +
+            "❌ AI loading error:<br>" +
             error.message;
 
-        return null;
+        return false;
     }
 }
 
 
-// ===============================
-// ANALYZE SKIPPING
-// ===============================
+// -------------------------------
+// ANALYZE VIDEO
+// -------------------------------
 
 async function analyzeSkipping() {
 
-    if (!skipVideo || !skipVideo.files.length) {
+    if (
+        !skipVideo ||
+        !skipVideo.files ||
+        !skipVideo.files.length
+    ) {
 
         skipStatus.innerHTML =
-            "❌ Please select a video first.";
+            "❌ Choose a skipping video first.";
 
         return;
     }
 
-    const ai = await loadAI();
+    if (processing) return;
 
-    if (!ai) return;
+    processing = true;
+
+    frameCount = 0;
+    bodyDetected = 0;
+
+    previousAnkleY = null;
+    previousMovement = null;
+
+    jumping = false;
+    lastCountTime = -10;
+
+    const ready = await loadAI();
+
+    if (!ready) {
+
+        processing = false;
+        return;
+    }
 
     const video = skipPreview;
 
-    if (!video) {
-
-        skipStatus.innerHTML =
-            "❌ Video preview element missing.";
-
-        return;
-    }
-
-    skipStatus.innerHTML =
-        "4️⃣ Reading video...";
+    video.muted = true;
+    video.playsInline = true;
 
     try {
 
-        await waitForVideo(video);
+        await waitVideo(video);
 
-        const duration = video.duration;
+        // Start from beginning
+        video.currentTime = 0;
 
-        if (!duration || !isFinite(duration)) {
+        await waitSeek(video);
 
-            skipStatus.innerHTML =
-                "❌ Video duration could not be read.";
+        skipStatus.innerHTML =
+            "🎥 Playing video.<br>" +
+            "AI is analyzing every available frame...";
 
+        await video.play();
+
+        if (
+            "requestVideoFrameCallback"
+            in HTMLVideoElement.prototype
+        ) {
+
+            processWithVideoFrames(video);
+
+        } else {
+
+            processWithTimer(video);
+        }
+
+    } catch (error) {
+
+        console.error(error);
+
+        skipStatus.innerHTML =
+            "❌ Video analysis error:<br>" +
+            error.message;
+
+        processing = false;
+    }
+}
+
+
+// -------------------------------
+// MODERN FRAME PROCESSING
+// -------------------------------
+
+function processWithVideoFrames(video) {
+
+    const processFrame =
+        async function(now, metadata) {
+
+        if (!processing)
+            return;
+
+        if (video.ended) {
+
+            finishAnalysis();
             return;
         }
 
-        skipStatus.innerHTML =
-            "5️⃣ Video ready.<br>" +
-            "Duration: " +
-            duration.toFixed(1) +
-            " seconds.<br>" +
-            "Starting body detection...";
+        await analyzeCurrentFrame(video);
 
-        let totalFrames = 0;
-        let bodyFrames = 0;
-        let ankleFrames = 0;
+        video.requestVideoFrameCallback(
+            processFrame
+        );
+    };
 
-        const movement = [];
+    video.requestVideoFrameCallback(
+        processFrame
+    );
+}
 
-        // Analyze approximately 5 frames per second.
-        const interval = 0.20;
 
-        for (
-            let time = 0;
-            time < duration;
-            time += interval
-        ) {
+// -------------------------------
+// FALLBACK FOR OLDER BROWSERS
+// -------------------------------
 
-            await seekVideo(video, time);
+function processWithTimer(video) {
 
-            totalFrames++;
+    const timer =
+        setInterval(async function() {
 
-            try {
+            if (!processing) {
 
-                const poses =
-                    await ai.estimatePoses(video);
-
-                if (
-                    poses &&
-                    poses.length > 0 &&
-                    poses[0].keypoints
-                ) {
-
-                    bodyFrames++;
-
-                    const points =
-                        poses[0].keypoints;
-
-                    const leftAnkle =
-                        findPoint(points, "left_ankle");
-
-                    const rightAnkle =
-                        findPoint(points, "right_ankle");
-
-                    const leftHip =
-                        findPoint(points, "left_hip");
-
-                    const rightHip =
-                        findPoint(points, "right_hip");
-
-                    if (
-                        leftAnkle &&
-                        rightAnkle &&
-                        leftHip &&
-                        rightHip
-                    ) {
-
-                        ankleFrames++;
-
-                        const ankleY =
-                            (
-                                leftAnkle.y +
-                                rightAnkle.y
-                            ) / 2;
-
-                        const hipY =
-                            (
-                                leftHip.y +
-                                rightHip.y
-                            ) / 2;
-
-                        movement.push({
-                            time: time,
-                            ankle: ankleY,
-                            hip: hipY
-                        });
-                    }
-                }
-
-            } catch (error) {
-
-                console.log(
-                    "Frame error:",
-                    error
-                );
+                clearInterval(timer);
+                return;
             }
 
-            const percent =
-                Math.round(
-                    (time / duration) * 100
-                );
+            if (video.ended) {
 
-            skipStatus.innerHTML =
-                "🤖 Analyzing video...<br>" +
-                percent + "% complete<br><br>" +
-                "Frames checked: " +
-                totalFrames +
-                "<br>" +
-                "Body detected: " +
-                bodyFrames +
-                "<br>" +
-                "Feet + hips detected: " +
-                ankleFrames;
+                clearInterval(timer);
+
+                finishAnalysis();
+
+                return;
+            }
+
+            await analyzeCurrentFrame(video);
+
+        }, 150);
+}
+
+
+// -------------------------------
+// ANALYZE ONE FRAME
+// -------------------------------
+
+async function analyzeCurrentFrame(video) {
+
+    frameCount++;
+
+    try {
+
+        const poses =
+            await detector.estimatePoses(video);
+
+        if (
+            !poses ||
+            !poses.length ||
+            !poses[0].keypoints
+        ) {
+
+            showProgress();
+            return;
         }
 
+        const points =
+            poses[0].keypoints;
 
-        // ===============================
-        // DIAGNOSTIC RESULT
-        // ===============================
+        const leftAnkle =
+            getPoint(points, "left_ankle");
 
-        let detected = 0;
+        const rightAnkle =
+            getPoint(points, "right_ankle");
 
-        if (movement.length >= 5) {
+        const leftHip =
+            getPoint(points, "left_hip");
 
-            detected =
-                detectSkipping(movement);
+        const rightHip =
+            getPoint(points, "right_hip");
+
+        if (
+            !leftAnkle ||
+            !rightAnkle ||
+            !leftHip ||
+            !rightHip
+        ) {
+
+            showProgress();
+            return;
         }
 
-        skipStatus.innerHTML =
-            "🏁 AI TEST COMPLETE<br><br>" +
+        bodyDetected++;
 
-            "Video frames checked: " +
-            totalFrames +
-            "<br>" +
+        const ankleY =
+            (
+                leftAnkle.y +
+                rightAnkle.y
+            ) / 2;
 
-            "Frames with body detected: " +
-            bodyFrames +
-            "<br>" +
+        const hipY =
+            (
+                leftHip.y +
+                rightHip.y
+            ) / 2;
 
-            "Frames with feet + hips detected: " +
-            ankleFrames +
-            "<br>" +
+        // Movement relative to body size
+        const bodySize =
+            Math.max(
+                Math.abs(ankleY - hipY),
+                1
+            );
 
-            "Movement cycles detected: " +
-            detected +
-            "<br><br>" +
+        const movement =
+            (ankleY - hipY) / bodySize;
 
-            "AI is connected. We can now calibrate the skipping counter.";
+        detectJump(
+            movement,
+            video.currentTime
+        );
 
-        // Only add a positive result.
-        if (detected > 0) {
+        showProgress();
 
-            skipCount += detected;
+    } catch (error) {
+
+        console.log(
+            "Frame error:",
+            error
+        );
+    }
+}
+
+
+// -------------------------------
+// JUMP DETECTION
+// -------------------------------
+
+function detectJump(movement, time) {
+
+    if (previousMovement === null) {
+
+        previousMovement = movement;
+        return;
+    }
+
+    const difference =
+        movement -
+        previousMovement;
+
+    /*
+       When jumping, the ankles move
+       upward relative to the hips.
+    */
+
+    if (
+        difference < -0.025 &&
+        !jumping
+    ) {
+
+        jumping = true;
+    }
+
+
+    /*
+       When the feet come back down,
+       count one completed repetition.
+    */
+
+    if (
+        difference > 0.025 &&
+        jumping
+    ) {
+
+        if (
+            time - lastCountTime > 0.25
+        ) {
+
+            skipCount++;
+
+            lastCountTime = time;
 
             localStorage.setItem(
                 "skipCount",
@@ -320,155 +420,133 @@ async function analyzeSkipping() {
             updateScreen();
         }
 
-    } catch (error) {
-
-        console.error(error);
-
-        skipStatus.innerHTML =
-            "❌ Analysis error:<br>" +
-            error.message;
+        jumping = false;
     }
+
+    previousMovement = movement;
 }
 
 
-// ===============================
-// WAIT FOR VIDEO
-// ===============================
+// -------------------------------
+// KEYPOINT
+// -------------------------------
 
-function waitForVideo(video) {
-
-    return new Promise((resolve, reject) => {
-
-        if (
-            video.readyState >= 2 &&
-            video.duration
-        ) {
-            resolve();
-            return;
-        }
-
-        const loaded = () => {
-            cleanup();
-            resolve();
-        };
-
-        const failed = () => {
-            cleanup();
-            reject(
-                new Error(
-                    "Video could not be loaded."
-                )
-            );
-        };
-
-        function cleanup() {
-
-            video.removeEventListener(
-                "loadedmetadata",
-                loaded
-            );
-
-            video.removeEventListener(
-                "error",
-                failed
-            );
-        }
-
-        video.addEventListener(
-            "loadedmetadata",
-            loaded
-        );
-
-        video.addEventListener(
-            "error",
-            failed
-        );
-    });
-}
-
-
-// ===============================
-// SEEK VIDEO
-// ===============================
-
-function seekVideo(video, time) {
-
-    return new Promise(resolve => {
-
-        const target =
-            Math.min(
-                time,
-                Math.max(
-                    0,
-                    video.duration - 0.05
-                )
-            );
-
-        const finished = () => {
-
-            video.removeEventListener(
-                "seeked",
-                finished
-            );
-
-            resolve();
-        };
-
-        video.addEventListener(
-            "seeked",
-            finished
-        );
-
-        video.currentTime = target;
-    });
-}
-
-
-// ===============================
-// FIND KEYPOINT
-// ===============================
-
-function findPoint(points, name) {
+function getPoint(points, name) {
 
     const point =
         points.find(
             p => p.name === name
         );
 
-    if (!point) return null;
+    if (!point)
+        return null;
 
     if (
         typeof point.score === "number" &&
         point.score < 0.25
-    ) {
+    )
         return null;
-    }
 
     return point;
 }
 
 
-// ===============================
-// SIMPLE MOVEMENT TEST
-// ===============================
+// -------------------------------
+// PROGRESS DISPLAY
+// -------------------------------
 
-function detectSkipping(data) {
+function showProgress() {
 
-    if (data.length < 5)
-        return 0;
+    if (!skipStatus)
+        return;
 
-    const signal =
-        data.map(item => {
+    let seconds = 0;
 
-            return (
-                item.ankle -
-                item.hip
+    if (
+        skipPreview &&
+        isFinite(skipPreview.currentTime)
+    ) {
+        seconds =
+            skipPreview.currentTime.toFixed(1);
+    }
+
+    skipStatus.innerHTML =
+        "🤖 Frame-by-frame AI analysis<br><br>" +
+        "Time: " + seconds + " sec<br>" +
+        "Frames processed: " + frameCount + "<br>" +
+        "Body detected: " + bodyDetected + "<br>" +
+        "Skips detected: " + skipCount;
+}
+
+
+// -------------------------------
+// FINISH
+// -------------------------------
+
+function finishAnalysis() {
+
+    processing = false;
+
+    updateScreen();
+
+    skipStatus.innerHTML =
+        "✅ Analysis complete!<br><br>" +
+        "Frames processed: " +
+        frameCount +
+        "<br>" +
+        "Body detected: " +
+        bodyDetected +
+        "<br>" +
+        "Total skips detected: " +
+        skipCount;
+}
+
+
+// -------------------------------
+// VIDEO READY
+// -------------------------------
+
+function waitVideo(video) {
+
+    return new Promise(function(resolve) {
+
+        if (
+            video.readyState >= 2 &&
+            video.duration
+        ) {
+
+            resolve();
+            return;
+        }
+
+        video.addEventListener(
+            "loadeddata",
+            resolve,
+            { once: true }
+        );
+    });
+}
+
+
+function waitSeek(video) {
+
+    return new Promise(function(resolve) {
+
+        function done() {
+
+            video.removeEventListener(
+                "seeked",
+                done
             );
-        });
 
-    // Smooth signal
-    const smooth = [];
+            resolve();
+        }
 
-    for (
-        let i = 0;
-       
+        video.addEventListener(
+            "seeked",
+            done
+        );
+
+        video.currentTime = 0;
+    });
+}

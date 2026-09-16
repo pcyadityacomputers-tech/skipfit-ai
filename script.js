@@ -1,112 +1,206 @@
 import {
-  PoseLandmarker,
-  FilesetResolver
+  FilesetResolver,
+  PoseLandmarker
 } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/+esm";
 
-const statusText = document.getElementById("status");
-const camera = document.getElementById("camera");
-const liveCountText = document.getElementById("liveCount");
-
-const fileInput = document.getElementById("videoFile");
-const fileVideo = document.getElementById("fileVideo");
-const analyzeBtn = document.getElementById("analyzeBtn");
-const fileCountText = document.getElementById("fileCount");
-const fileStatus = document.getElementById("fileStatus");
-
-let poseLandmarker;
-let stream = null;
-let animationId = null;
-let recording = null;
-let recordedChunks = [];
-
-let liveCount = 0;
-let lastJump = false;
-let lastCountTime = 0;
-
-const MODEL_URL =
+const MODEL =
 "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task";
+
+const statusEl =
+document.getElementById("status");
+
+const camera =
+document.getElementById("camera");
+
+const canvas =
+document.getElementById("overlay");
+
+const ctx =
+canvas.getContext("2d");
+
+const startBtn =
+document.getElementById("startBtn");
+
+const calibrateBtn =
+document.getElementById("calibrateBtn");
+
+const stopBtn =
+document.getElementById("stopBtn");
+
+const stageEl =
+document.getElementById("stage");
+
+const calibrationEl =
+document.getElementById("calibrationCount");
+
+const barFill =
+document.getElementById("barFill");
+
+const skipEl =
+document.getElementById("skipCount");
+
+const headEl =
+document.getElementById("head");
+
+const handsEl =
+document.getElementById("hands");
+
+const legsEl =
+document.getElementById("legs");
+
+let landmarker = null;
+let stream = null;
+let running = false;
+let calibrating = false;
+let confirmed = false;
+
+let animationId = null;
+
+let calibrationJumps = 0;
+let skips = 0;
+
+let lastJumpTime = 0;
+let previousSignal = null;
+let previousVelocity = 0;
+
+let jumpState = "GROUND";
+
+let calibrationSamples = [];
+let calibratedAmplitude = 0;
+let calibratedPeriod = 0;
+
+let signalHistory = [];
+let handHistory = [];
+let headHistory = [];
+let legHistory = [];
 
 async function loadAI(){
 
   try{
 
-    statusText.textContent = "Loading AI body tracker...";
+    statusEl.textContent =
+      "Loading body-tracking AI...";
 
-    const vision = await FilesetResolver.forVisionTasks(
-      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/wasm"
-    );
+    const vision =
+      await FilesetResolver.forVisionTasks(
+        "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/wasm"
+      );
 
-    poseLandmarker = await PoseLandmarker.createFromOptions(
-      vision,
-      {
-        baseOptions:{
-          modelAssetPath:MODEL_URL,
-          delegate:"GPU"
-        },
+    landmarker =
+      await PoseLandmarker.createFromOptions(
+        vision,
+        {
+          baseOptions:{
+            modelAssetPath:MODEL,
+            delegate:"GPU"
+          },
 
-        runningMode:"VIDEO",
+          runningMode:"VIDEO",
 
-        numPoses:1,
+          numPoses:1,
 
-        minPoseDetectionConfidence:0.5,
-        minPosePresenceConfidence:0.5,
-        minTrackingConfidence:0.5
-      }
-    );
+          minPoseDetectionConfidence:.55,
+          minPosePresenceConfidence:.55,
+          minTrackingConfidence:.55
+        }
+      );
 
-    statusText.textContent = "✅ AI ready";
+    statusEl.textContent =
+      "AI ready. Start camera.";
+
+    stageEl.textContent =
+      "READY";
 
   }catch(error){
 
     console.error(error);
 
-    statusText.textContent =
-      "❌ AI failed to load. Refresh the page.";
+    statusEl.textContent =
+      "AI failed to load. Refresh the page.";
+
+    stageEl.textContent =
+      "ERROR";
   }
 }
 
 loadAI();
 
-async function startCamera(mode){
 
-  stopCamera();
+async function startCamera(){
+
+  if(!landmarker){
+    statusEl.textContent =
+      "AI is still loading...";
+    return;
+  }
 
   try{
 
-    stream = await navigator.mediaDevices.getUserMedia({
-      video:{
-        facingMode:mode,
-        width:{ideal:640},
-        height:{ideal:480}
-      },
-      audio:false
-    });
+    stream =
+      await navigator.mediaDevices.getUserMedia({
+        video:{
+          facingMode:"user",
+          width:{ideal:720},
+          height:{ideal:960}
+        },
+        audio:false
+      });
 
     camera.srcObject = stream;
 
     await camera.play();
 
-    statusText.textContent =
-      "🟢 Camera running — start skipping";
+    running = true;
+    calibrating = false;
+    confirmed = false;
 
-    liveCount = 0;
-    liveCountText.textContent = "0";
+    calibrationJumps = 0;
+    skips = 0;
 
-    lastJump = false;
-    lastCountTime = 0;
+    skipEl.textContent = "0";
 
-    detectCamera();
+    calibrationEl.textContent = "0 / 5";
+
+    barFill.style.width = "0%";
+
+    signalHistory = [];
+    handHistory = [];
+    headHistory = [];
+    legHistory = [];
+
+    previousSignal = null;
+    previousVelocity = 0;
+
+    jumpState = "GROUND";
+
+    startBtn.disabled = true;
+    calibrateBtn.disabled = false;
+    stopBtn.disabled = false;
+
+    stageEl.textContent =
+      "BODY DETECTION";
+
+    statusEl.textContent =
+      "Stand back so your full body is visible.";
+
+    resizeCanvas();
+
+    detectLoop();
 
   }catch(error){
 
     console.error(error);
 
-    statusText.textContent =
-      "❌ Camera permission/error.";
+    statusEl.textContent =
+      "Camera permission was denied or unavailable.";
   }
 }
 
+
 function stopCamera(){
+
+  running = false;
+  calibrating = false;
 
   if(animationId){
     cancelAnimationFrame(animationId);
@@ -115,31 +209,108 @@ function stopCamera(){
 
   if(stream){
 
-    stream.getTracks().forEach(track=>{
-      track.stop();
-    });
+    stream.getTracks().forEach(
+      track => track.stop()
+    );
 
     stream = null;
   }
 
   camera.srcObject = null;
+
+  startBtn.disabled = false;
+  calibrateBtn.disabled = true;
+  stopBtn.disabled = true;
+
+  stageEl.textContent = "STOPPED";
+
+  statusEl.textContent =
+    "Camera stopped.";
 }
 
-function getSignal(landmarks){
 
-  if(!landmarks) return null;
+function resizeCanvas(){
 
-  const leftAnkle = landmarks[27];
-  const rightAnkle = landmarks[28];
+  if(camera.videoWidth){
 
-  const leftHip = landmarks[23];
-  const rightHip = landmarks[24];
+    canvas.width =
+      camera.videoWidth;
+
+    canvas.height =
+      camera.videoHeight;
+  }
+}
+
+
+function pointVisible(p){
+
+  return p &&
+    typeof p.x === "number" &&
+    typeof p.y === "number" &&
+    (p.visibility === undefined ||
+     p.visibility > .45);
+}
+
+
+function detectBody(parts){
+
+  const nose = parts[0];
+
+  const leftWrist = parts[15];
+  const rightWrist = parts[16];
+
+  const leftKnee = parts[25];
+  const rightKnee = parts[26];
+
+  const leftAnkle = parts[27];
+  const rightAnkle = parts[28];
+
+  const head =
+    pointVisible(nose);
+
+  const hands =
+    pointVisible(leftWrist) &&
+    pointVisible(rightWrist);
+
+  const legs =
+    pointVisible(leftAnkle) &&
+    pointVisible(rightAnkle) &&
+    pointVisible(leftKnee) &&
+    pointVisible(rightKnee);
+
+  headEl.textContent =
+    head ? "HEAD ✓" : "HEAD ○";
+
+  handsEl.textContent =
+    hands ? "HANDS ✓" : "HANDS ○";
+
+  legsEl.textContent =
+    legs ? "LEGS ✓" : "LEGS ○";
+
+  return {
+    head,
+    hands,
+    legs
+  };
+}
+
+
+function calculateSignal(p){
+
+  const leftAnkle = p[27];
+  const rightAnkle = p[28];
+
+  const leftHip = p[23];
+  const rightHip = p[24];
+
+  const leftKnee = p[25];
+  const rightKnee = p[26];
 
   if(
-    !leftAnkle ||
-    !rightAnkle ||
-    !leftHip ||
-    !rightHip
+    !pointVisible(leftAnkle) ||
+    !pointVisible(rightAnkle) ||
+    !pointVisible(leftHip) ||
+    !pointVisible(rightHip)
   ){
     return null;
   }
@@ -150,490 +321,467 @@ function getSignal(landmarks){
   const hipY =
     (leftHip.y + rightHip.y) / 2;
 
-  return ankleY - hipY;
-}
-
-let signalHistory = [];
-
-function processSignal(signal){
-
-  if(signal === null) return;
-
-  signalHistory.push(signal);
-
-  if(signalHistory.length > 15){
-    signalHistory.shift();
-  }
-
-  if(signalHistory.length < 8){
-    return;
-  }
-
-  const avg =
-    signalHistory.reduce((a,b)=>a+b,0) /
-    signalHistory.length;
-
-  const current = signalHistory[
-    signalHistory.length - 1
-  ];
-
-  const now = performance.now();
+  const kneeY =
+    (leftKnee.y + rightKnee.y) / 2;
 
   /*
-    Smaller ankle-to-hip distance means
-    feet are higher relative to the body.
+    Main signal:
+    ankle-to-hip distance.
+
+    Additional knee information helps reject
+    random body movement.
   */
 
-  const jumpThreshold = 0.42;
+  const ankleHip =
+    ankleY - hipY;
 
-  const isJump =
-    current < avg - 0.025 &&
-    current < jumpThreshold;
+  const kneeHip =
+    kneeY - hipY;
 
-  if(
-    isJump &&
-    !lastJump &&
-    now - lastCountTime > 250
-  ){
+  return {
+    main:ankleHip,
+    knee:kneeHip,
 
-    liveCount++;
+    wristY:
+      (
+        p[15].y +
+        p[16].y
+      ) / 2,
 
-    liveCountText.textContent =
-      liveCount.toLocaleString();
-
-    lastCountTime = now;
-  }
-
-  lastJump = isJump;
+    headY:p[0].y
+  };
 }
 
-function detectCamera(){
 
-  if(!stream || !poseLandmarker) return;
+function smooth(array){
 
-  if(camera.readyState < 2){
+  if(array.length === 0)
+    return 0;
 
-    animationId =
-      requestAnimationFrame(detectCamera);
+  const n =
+    Math.min(array.length,7);
+
+  let total = 0;
+
+  for(
+    let i=array.length-n;
+    i<array.length;
+    i++
+  ){
+    total += array[i];
+  }
+
+  return total/n;
+}
+
+
+function analyzeJump(signal, now){
+
+  signalHistory.push(signal.main);
+
+  if(signalHistory.length > 20)
+    signalHistory.shift();
+
+  if(signalHistory.length < 8)
+    return;
+
+  const current =
+    smooth(signalHistory);
+
+  if(previousSignal === null){
+
+    previousSignal = current;
+    return;
+  }
+
+  const velocity =
+    current - previousSignal;
+
+  /*
+    Detect a change from downward movement
+    to upward movement and back.
+
+    The jump is therefore a complete movement,
+    not just one noisy frame.
+  */
+
+  const rising =
+    velocity < -0.002;
+
+  const falling =
+    velocity > 0.002;
+
+  /*
+    Need sufficient movement amplitude.
+  */
+
+  let localMin =
+    Math.min(...signalHistory);
+
+  let localMax =
+    Math.max(...signalHistory);
+
+  const amplitude =
+    localMax-localMin;
+
+  const requiredAmplitude =
+    calibrating
+      ? 0.025
+      : Math.max(
+          .025,
+          calibratedAmplitude * .35
+        );
+
+  if(
+    jumpState === "GROUND" &&
+    rising &&
+    amplitude > requiredAmplitude
+  ){
+
+    jumpState = "UP";
+  }
+
+  if(
+    jumpState === "UP" &&
+    falling
+  ){
+
+    /*
+      Complete jump.
+    */
+
+    if(
+      now-lastJumpTime > 280
+    ){
+
+      registerJump(now);
+    }
+
+    jumpState = "GROUND";
+  }
+
+  previousSignal = current;
+  previousVelocity = velocity;
+}
+
+
+function registerJump(now){
+
+  lastJumpTime = now;
+
+  if(calibrating){
+
+    calibrationSamples.push({
+      time:now,
+      signal:smooth(signalHistory)
+    });
+
+    calibrationJumps++;
+
+    calibrationEl.textContent =
+      calibrationJumps + " / 5";
+
+    barFill.style.width =
+      (calibrationJumps/5*100) + "%";
+
+    stageEl.textContent =
+      "CALIBRATING • " +
+      calibrationJumps +
+      " / 5";
+
+    if(calibrationJumps >= 5){
+
+      finishCalibration();
+    }
 
     return;
   }
 
-  const timestamp =
-    performance.now();
+  if(!confirmed)
+    return;
 
-  const result =
-    poseLandmarker.detectForVideo(
-      camera,
-      timestamp
+  skips++;
+
+  skipEl.textContent =
+    skips.toLocaleString();
+
+  stageEl.textContent =
+    "SKIPPING • " +
+    skips.toLocaleString();
+}
+
+
+function finishCalibration(){
+
+  calibrating = false;
+
+  /*
+    Calculate the typical movement amplitude
+    and approximate timing from the five jumps.
+  */
+
+  const values =
+    calibrationSamples.map(
+      x => x.signal
     );
 
-  if(
-    result.landmarks &&
-    result.landmarks.length
-  ){
+  if(values.length){
 
-    const signal =
-      getSignal(result.landmarks[0]);
+    const max =
+      Math.max(...values);
 
-    processSignal(signal);
+    const min =
+      Math.min(...values);
 
-  }else{
+    calibratedAmplitude =
+      Math.max(
+        .04,
+        max-min
+      );
+  }
 
-    statusText.textContent =
-      "⚠️ Body not clearly visible";
+  if(calibrationSamples.length >= 2){
+
+    let total = 0;
+
+    for(
+      let i=1;
+      i<calibrationSamples.length;
+      i++
+    ){
+
+      total +=
+        calibrationSamples[i].time -
+        calibrationSamples[i-1].time;
+    }
+
+    calibratedPeriod =
+      total /
+      (calibrationSamples.length-1);
+  }
+
+  confirmed = true;
+
+  stageEl.textContent =
+    "✓ PATTERN CONFIRMED";
+
+  statusEl.textContent =
+    "Your jump pattern is calibrated. Keep skipping.";
+
+  calibrateBtn.disabled = true;
+}
+
+
+function drawSkeleton(points){
+
+  ctx.clearRect(
+    0,
+    0,
+    canvas.width,
+    canvas.height
+  );
+
+  const connections = [
+
+    [11,12],
+
+    [11,13],
+    [13,15],
+
+    [12,14],
+    [14,16],
+
+    [11,23],
+    [12,24],
+
+    [23,24],
+
+    [23,25],
+    [25,27],
+
+    [24,26],
+    [26,28],
+
+    [27,29],
+    [29,31],
+
+    [28,30],
+    [30,32]
+  ];
+
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = "#36a9ff";
+
+  for(const [a,b] of connections){
+
+    if(
+      !pointVisible(points[a]) ||
+      !pointVisible(points[b])
+    )
+      continue;
+
+    ctx.beginPath();
+
+    ctx.moveTo(
+      points[a].x*canvas.width,
+      points[a].y*canvas.height
+    );
+
+    ctx.lineTo(
+      points[b].x*canvas.width,
+      points[b].y*canvas.height
+    );
+
+    ctx.stroke();
+  }
+
+  ctx.fillStyle = "#ffffff";
+
+  for(const p of points){
+
+    if(!pointVisible(p))
+      continue;
+
+    ctx.beginPath();
+
+    ctx.arc(
+      p.x*canvas.width,
+      p.y*canvas.height,
+      4,
+      0,
+      Math.PI*2
+    );
+
+    ctx.fill();
+  }
+}
+
+
+function detectLoop(){
+
+  if(!running)
+    return;
+
+  if(camera.readyState >= 2){
+
+    resizeCanvas();
+
+    try{
+
+      const result =
+        landmarker.detectForVideo(
+          camera,
+          performance.now()
+        );
+
+      if(
+        result.landmarks &&
+        result.landmarks.length
+      ){
+
+        const points =
+          result.landmarks[0];
+
+        drawSkeleton(points);
+
+        const body =
+          detectBody(points);
+
+        if(
+          !body.head ||
+          !body.hands ||
+          !body.legs
+        ){
+
+          if(!calibrating && !confirmed){
+
+            stageEl.textContent =
+              "FULL BODY REQUIRED";
+          }
+
+        }else{
+
+          if(
+            !calibrating &&
+            !confirmed
+          ){
+
+            stageEl.textContent =
+              "BODY DETECTED ✓";
+          }
+
+          const signal =
+            calculateSignal(points);
+
+          if(signal){
+
+            analyzeJump(
+              signal,
+              performance.now()
+            );
+          }
+        }
+
+      }else{
+
+        headEl.textContent = "HEAD ○";
+        handsEl.textContent = "HANDS ○";
+        legsEl.textContent = "LEGS ○";
+
+        stageEl.textContent =
+          "NO BODY DETECTED";
+      }
+
+    }catch(error){
+
+      console.error(error);
+    }
   }
 
   animationId =
-    requestAnimationFrame(detectCamera);
+    requestAnimationFrame(
+      detectLoop
+    );
 }
 
-document
-.getElementById("frontBtn")
-.addEventListener("click",()=>{
-  startCamera("user");
-});
 
-document
-.getElementById("rearBtn")
-.addEventListener("click",()=>{
-  startCamera("environment");
-});
+startBtn.addEventListener(
+  "click",
+  startCamera
+);
 
-document
-.getElementById("openCamera")
-.addEventListener("click",()=>{
-  startCamera("user");
-});
 
-document
-.getElementById("stopCamera")
-.addEventListener("click",()=>{
-  stopCamera();
-  statusText.textContent =
-    "Camera stopped";
-});
+stopBtn.addEventListener(
+  "click",
+  stopCamera
+);
 
-document
-.getElementById("recordBtn")
-.addEventListener("click",()=>{
 
-  if(!stream){
+calibrateBtn.addEventListener(
+  "click",
+  ()=>{
 
-    alert("Open the camera first.");
-    return;
+    if(!running)
+      return;
+
+    calibrating = true;
+    confirmed = false;
+
+    calibrationJumps = 0;
+    calibrationSamples = [];
+
+    calibrationEl.textContent =
+      "0 / 5";
+
+    barFill.style.width = "0%";
+
+    previousSignal = null;
+    jumpState = "GROUND";
+
+    stageEl.textContent =
+      "JUMP 5 TIMES";
+
+    statusEl.textContent =
+      "Make five normal, controlled jumps.";
   }
-
-  if(recording && recording.state === "recording"){
-
-    recording.stop();
-
-    document.getElementById("recordBtn")
-      .textContent = "🔴 Start Recording";
-
-    return;
-  }
-
-  recordedChunks = [];
-
-  let mime = "video/webm";
-
-  if(
-    MediaRecorder.isTypeSupported(
-      "video/webm;codecs=vp9"
-    )
-  ){
-    mime = "video/webm;codecs=vp9";
-  }
-
-  recording = new MediaRecorder(
-    stream,
-    {mimeType:mime}
-  );
-
-  recording.ondataavailable = e => {
-
-    if(e.data.size > 0){
-      recordedChunks.push(e.data);
-    }
-  };
-
-  recording.onstop = ()=>{
-
-    const blob =
-      new Blob(recordedChunks,{
-        type:mime
-      });
-
-    const url =
-      URL.createObjectURL(blob);
-
-    const video =
-      document.getElementById("recordedVideo");
-
-    video.src = url;
-    video.hidden = false;
-
-  };
-
-  recording.start();
-
-  document.getElementById("recordBtn")
-    .textContent = "⏹ Stop Recording";
-});
-
-/* FILE ANALYSIS */
-
-fileInput.addEventListener("change",()=>{
-
-  const file = fileInput.files[0];
-
-  if(!file) return;
-
-  const url =
-    URL.createObjectURL(file);
-
-  fileVideo.src = url;
-  fileVideo.hidden = false;
-
-  fileStatus.textContent =
-    "Video loaded. Press Analyze Video.";
-
-  fileCountText.textContent = "0";
-});
-
-function analyzeVideo(){
-
-  return new Promise(resolve=>{
-
-    const samples = [];
-
-    const duration =
-      fileVideo.duration;
-
-    const fps = 15;
-
-    const totalFrames =
-      Math.floor(duration * fps);
-
-    let frame = 0;
-
-    function nextFrame(){
-
-      if(frame >= totalFrames){
-
-        resolve(samples);
-        return;
-      }
-
-      const time =
-        frame / fps;
-
-      fileVideo.currentTime = time;
-
-      const waitForSeek = ()=>{
-
-        fileVideo.removeEventListener(
-          "seeked",
-          waitForSeek
-        );
-
-        try{
-
-          const result =
-            poseLandmarker.detectForVideo(
-              fileVideo,
-              Math.round(time * 1000000)
-            );
-
-          if(
-            result.landmarks &&
-            result.landmarks.length
-          ){
-
-            const signal =
-              getSignal(
-                result.landmarks[0]
-              );
-
-            if(signal !== null){
-              samples.push(signal);
-            }
-          }
-
-        }catch(error){
-          console.error(error);
-        }
-
-        frame++;
-
-        setTimeout(nextFrame,20);
-      };
-
-      fileVideo.addEventListener(
-        "seeked",
-        waitForSeek
-      );
-    }
-
-    nextFrame();
-  });
-}
-
-function countFromSamples(samples){
-
-  if(samples.length < 10){
-    return 0;
-  }
-
-  /*
-    Smooth the signal.
-  */
-
-  const smooth = [];
-
-  const windowSize = 5;
-
-  for(let i=0;i<samples.length;i++){
-
-    let sum = 0;
-    let count = 0;
-
-    for(
-      let j=i-windowSize;
-      j<=i+windowSize;
-      j++
-    ){
-
-      if(j>=0 && j<samples.length){
-
-        sum += samples[j];
-        count++;
-      }
-    }
-
-    smooth.push(sum/count);
-  }
-
-  let min =
-    Math.min(...smooth);
-
-  let max =
-    Math.max(...smooth);
-
-  const range = max-min;
-
-  if(range < 0.04){
-    return 0;
-  }
-
-  /*
-    Count alternating movement cycles.
-  */
-
-  const threshold =
-    range * 0.22;
-
-  let count = 0;
-
-  let state = "low";
-
-  let lastTime = -100;
-
-  for(let i=2;i<smooth.length-2;i++){
-
-    const prev = smooth[i-1];
-    const current = smooth[i];
-    const next = smooth[i+1];
-
-    /*
-      Local minimum = feet higher.
-    */
-
-    const isPeak =
-      current < prev &&
-      current < next &&
-      min + threshold > current;
-
-    if(
-      isPeak &&
-      state !== "peak" &&
-      i-lastTime >= 4
-    ){
-
-      count++;
-
-      state = "peak";
-      lastTime = i;
-    }
-
-    /*
-      Return toward lower position
-      before another skip can be counted.
-    */
-
-    if(
-      state === "peak" &&
-      current > min + threshold
-    ){
-
-      state = "low";
-    }
-  }
-
-  return count;
-}
-
-analyzeBtn.addEventListener("click",async()=>{
-
-  if(!poseLandmarker){
-
-    fileStatus.textContent =
-      "AI is still loading. Wait a moment.";
-
-    return;
-  }
-
-  if(!fileVideo.src){
-
-    fileStatus.textContent =
-      "Choose a video first.";
-
-    return;
-  }
-
-  analyzeBtn.disabled = true;
-
-  fileStatus.textContent =
-    "🧠 AI analyzing your video...";
-
-  try{
-
-    const samples =
-      await analyzeVideo();
-
-    const count =
-      countFromSamples(samples);
-
-    fileCountText.textContent =
-      count.toLocaleString();
-
-    fileStatus.textContent =
-      `✅ Analysis complete. ${count} skips detected.`;
-
-  }catch(error){
-
-    console.error(error);
-
-    fileStatus.textContent =
-      "❌ Video analysis failed.";
-
-  }finally{
-
-    analyzeBtn.disabled = false;
-  }
-});
-
-/* PROGRESS */
-
-const totalSkipsText =
-  document.getElementById("totalSkips");
-
-let savedTotal =
-  Number(localStorage.getItem("skipfitTotal") || 0);
-
-totalSkipsText.textContent =
-  savedTotal.toLocaleString();
-
-document
-.getElementById("saveBtn")
-.addEventListener("click",()=>{
-
-  savedTotal += liveCount;
-
-  localStorage.setItem(
-    "skipfitTotal",
-    savedTotal
-  );
-
-  totalSkipsText.textContent =
-    savedTotal.toLocaleString();
-
-  alert(
-    `${liveCount} skips saved!`
-  );
-});
-
-document
-.getElementById("resetBtn")
-.addEventListener("click",()=>{
-
-  savedTotal = 0;
-
-  localStorage.setItem(
-    "skipfitTotal",
-    "0"
-  );
-
-  totalSkipsText.textContent = "0";
-});
+);

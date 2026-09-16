@@ -1,168 +1,71 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-  <title>SkipFit AI</title>
-
-  <link rel="stylesheet" href="style.css">
-
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5/pose.js"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>SkipFit AI</title>
+<link rel="stylesheet" href="style.css">
 </head>
 
 <body>
 
 <header>
-  <h1>⚡ SkipFit AI</h1>
-  <p class="creator">By Aditya Kumar Yadav</p>
-  <p class="tagline">Train • Count • Improve</p>
-  <span class="version">AI SKIPPING COUNTER V6</span>
+  <h1>SkipFit AI</h1>
+  <p>By Aditya Kumar Yadav</p>
+  <span>Train • Count • Improve</span>
 </header>
 
 <main>
 
 <section class="card">
-  <h2>📅 Today's Task</h2>
+  <h2>🪢 Skipping Counter</h2>
+  <div id="status">Loading AI...</div>
 
-  <div class="task">
-    <span>🪢 Skipping</span>
-    <strong id="skipTask">0 / 1000</strong>
+  <div class="counter" id="liveCount">0</div>
+  <p>SKIPS</p>
+
+  <video id="camera" autoplay playsinline muted></video>
+  <canvas id="canvas"></canvas>
+
+  <div class="buttons">
+    <button id="frontBtn">Front Camera</button>
+    <button id="rearBtn">Rear Camera</button>
+    <button id="openCamera">Open Camera</button>
+    <button id="stopCamera">Stop Camera</button>
   </div>
 
-  <div class="progress">
-    <div id="skipProgress"></div>
-  </div>
+  <hr>
+
+  <button id="recordBtn">🔴 Start Recording</button>
+  <video id="recordedVideo" controls playsinline hidden></video>
 </section>
 
-
 <section class="card">
+  <h2>📁 Analyze Skipping Video</h2>
 
-  <h2>📷 Camera Skipping</h2>
+  <input id="videoFile" type="file" accept="video/*">
 
-  <div class="cameraBox">
+  <video id="fileVideo" controls playsinline hidden></video>
 
-    <video
-      id="camera"
-      autoplay
-      muted
-      playsinline>
-    </video>
+  <button id="analyzeBtn">🧠 Analyze Video</button>
 
-    <canvas id="cameraCanvas"></canvas>
+  <div class="counter small" id="fileCount">0</div>
+  <p>DETECTED SKIPS</p>
 
-  </div>
-
-  <button id="openCameraBtn">
-    📷 Open Camera
-  </button>
-
-  <button
-    id="recordBtn"
-    disabled>
-    🔴 Start Recording
-  </button>
-
-  <div class="bigCount" id="liveCount">
-    0
-  </div>
-
-  <p id="cameraStatus">
-    Open the camera to start.
-  </p>
-
+  <p id="fileStatus">Choose a video.</p>
 </section>
 
-
 <section class="card">
-
-  <h2>📁 Choose Skipping Video</h2>
-
-  <input
-    type="file"
-    id="videoFile"
-    accept="video/*">
-
-  <video
-    id="fileVideo"
-    controls
-    playsinline>
-  </video>
-
-  <button
-    id="analyzeFileBtn"
-    disabled>
-    🧠 Count Skips in Video
-  </button>
-
-  <div class="bigCount" id="fileCount">
-    0
-  </div>
-
-  <p id="fileStatus">
-    Choose a skipping video.
-  </p>
-
-</section>
-
-
-<section class="card">
-
-  <h2>🎥 Recorded Video</h2>
-
-  <video
-    id="recordedVideo"
-    controls
-    playsinline>
-  </video>
-
-  <p id="recordStatus">
-    Your recording will appear here.
-  </p>
-
-</section>
-
-
-<section class="card">
-
   <h2>📊 Progress</h2>
-
-  <div class="stats">
-
-    <div>
-      <span>Total Skips</span>
-      <strong id="totalSkips">0</strong>
-    </div>
-
-  </div>
-
-</section>
-
-
-<section class="card tips">
-
-  <h2>🎯 Best Setup</h2>
-
-  <p>✓ Keep your complete body visible.</p>
-  <p>✓ Keep both feet visible.</p>
-  <p>✓ Keep the phone stable.</p>
-  <p>✓ Use good lighting.</p>
-  <p>✓ Stand far enough from the camera.</p>
-  <p>✓ Test with a short clip first.</p>
-
+  <div class="progressNumber" id="totalSkips">0</div>
+  <p>TOTAL SAVED SKIPS</p>
+  <button id="saveBtn">Save Current Count</button>
+  <button id="resetBtn">Reset Progress</button>
 </section>
 
 </main>
 
-
-<footer>
-  <p>⚡ SkipFit AI</p>
-  <p>Created by Aditya Kumar Yadav</p>
-  <small>AI movement tracking</small>
-</footer>
-
-
-<script src="script.js"></script>
+<script type="module" src="script.js"></script>
 
 </body>
 </html>

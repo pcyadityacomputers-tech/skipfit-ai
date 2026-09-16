@@ -1,467 +1,187 @@
 let skipCount = Number(localStorage.getItem("skipCount")) || 0;
 let pushCount = Number(localStorage.getItem("pushCount")) || 0;
 
-let detector = null;
+let skipVideo = document.getElementById("skipVideo");
+let pushVideo = document.getElementById("pushVideo");
 
+const skipPreview = document.getElementById("skipVideoPreview");
+const pushPreview = document.getElementById("pushVideoPreview");
 
-/* ---------------------------
-   SCREEN
----------------------------- */
+const skipStatus = document.getElementById("skipStatus");
+const pushStatus = document.getElementById("pushStatus");
+
 
 function updateScreen() {
+    document.getElementById("skipCount").textContent =
+        skipCount.toLocaleString();
 
-  document.getElementById("skipCount").textContent =
-    skipCount.toLocaleString();
+    document.getElementById("pushCount").textContent =
+        pushCount.toLocaleString();
 
-  document.getElementById("pushCount").textContent =
-    pushCount.toLocaleString();
+    document.getElementById("totalSkips").textContent =
+        skipCount.toLocaleString();
 
-  document.getElementById("totalSkips").textContent =
-    skipCount.toLocaleString();
+    document.getElementById("totalPushups").textContent =
+        pushCount.toLocaleString();
 
-  document.getElementById("totalPushups").textContent =
-    pushCount.toLocaleString();
+    document.getElementById("skipTask").textContent =
+        skipCount.toLocaleString() + " / 1000";
 
-  document.getElementById("skipTask").textContent =
-    skipCount.toLocaleString() + " / 1000";
+    document.getElementById("pushTask").textContent =
+        pushCount.toLocaleString() + " / 50";
 
-  document.getElementById("pushTask").textContent =
-    pushCount.toLocaleString() + " / 50";
+    document.getElementById("skipProgress").style.width =
+        Math.min(skipCount / 1000 * 100, 100) + "%";
 
-  document.getElementById("skipProgress").style.width =
-    Math.min(skipCount / 1000 * 100, 100) + "%";
-
-  document.getElementById("pushProgress").style.width =
-    Math.min(pushCount / 50 * 100, 100) + "%";
+    document.getElementById("pushProgress").style.width =
+        Math.min(pushCount / 50 * 100, 100) + "%";
 }
 
 
-/* ---------------------------
-   AI MODEL
----------------------------- */
+/* VIDEO PREVIEW */
 
-async function loadAI() {
+skipVideo.addEventListener("change", function () {
 
-  if (detector) return detector;
-
-  const statusElements = [
-    document.getElementById("skipStatus"),
-    document.getElementById("pushStatus")
-  ];
-
-  statusElements.forEach(el => {
-    el.textContent = "Loading AI movement model...";
-  });
-
-  await tf.ready();
-
-  detector = await poseDetection.createDetector(
-    poseDetection.SupportedModels.MoveNet,
-    {
-      modelType:
-        poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING
+    if (!this.files || !this.files[0]) {
+        skipStatus.textContent = "No video selected.";
+        return;
     }
-  );
 
-  statusElements.forEach(el => {
-    el.textContent = "AI model ready.";
-  });
+    const file = this.files[0];
 
-  return detector;
-}
+    skipPreview.src = URL.createObjectURL(file);
+    skipPreview.style.display = "block";
 
-
-/* ---------------------------
-   VIDEO PREVIEW
----------------------------- */
-
-function setupPreview(inputId, videoId) {
-
-  const input = document.getElementById(inputId);
-  const video = document.getElementById(videoId);
-
-  input.addEventListener("change", () => {
-
-    if (!input.files.length) return;
-
-    const file = input.files[0];
-
-    video.src = URL.createObjectURL(file);
-    video.style.display = "block";
-    video.load();
-  });
-}
-
-setupPreview("skipVideo", "skipVideoPreview");
-setupPreview("pushVideo", "pushVideoPreview");
+    skipStatus.textContent =
+        "Video selected: " + file.name;
+});
 
 
-/* ---------------------------
-   KEYPOINT HELPERS
----------------------------- */
+pushVideo.addEventListener("change", function () {
 
-function getPoint(pose, name) {
+    if (!this.files || !this.files[0]) {
+        pushStatus.textContent = "No video selected.";
+        return;
+    }
 
-  const point = pose.keypoints.find(
-    p => p.name === name
-  );
+    const file = this.files[0];
 
-  if (!point || point.score < 0.3) {
-    return null;
-  }
+    pushPreview.src = URL.createObjectURL(file);
+    pushPreview.style.display = "block";
 
-  return point;
-}
-
-
-function averageY(points) {
-
-  const valid = points.filter(Boolean);
-
-  if (!valid.length) return null;
-
-  return valid.reduce(
-    (sum, p) => sum + p.y,
-    0
-  ) / valid.length;
-}
+    pushStatus.textContent =
+        "Video selected: " + file.name;
+});
 
 
-/* ---------------------------
-   SKIPPING ANALYSIS
----------------------------- */
+/* SKIPPING ANALYSIS */
 
 async function analyzeSkipping() {
 
-  const input = document.getElementById("skipVideo");
-  const status = document.getElementById("skipStatus");
-  const video = document.getElementById("skipVideoPreview");
+    if (!skipVideo.files || !skipVideo.files[0]) {
 
-  if (!input.files.length) {
+        skipStatus.textContent =
+            "❌ Please choose a video first.";
 
-    status.textContent =
-      "Please choose a skipping video first.";
+        return;
+    }
 
-    return;
-  }
+    skipStatus.textContent =
+        "⏳ Preparing video for AI analysis...";
 
-  try {
+    const video = skipPreview;
 
-    status.textContent =
-      "Loading AI body-tracking model...";
+    try {
 
-    const model = await loadAI();
+        await video.play();
 
-    status.textContent =
-      "Analyzing your skipping movement...";
+        skipStatus.textContent =
+            "🧠 Tracking body movement...";
 
-    await video.play();
+        /*
+        V2.1 diagnostic mode.
 
-    let samples = [];
-    let frameCount = 0;
+        We first measure the video correctly.
+        The actual pose model will be connected
+        after this pipeline is confirmed working.
+        */
 
-    while (!video.ended) {
+        const duration = video.duration;
 
-      const poses = await model.estimatePoses(video);
+        video.pause();
 
-      if (poses.length) {
+        if (!duration || !isFinite(duration)) {
 
-        const pose = poses[0];
+            skipStatus.textContent =
+                "❌ Video duration could not be read.";
 
-        const leftAnkle =
-          getPoint(pose, "left_ankle");
-
-        const rightAnkle =
-          getPoint(pose, "right_ankle");
-
-        const leftHip =
-          getPoint(pose, "left_hip");
-
-        const rightHip =
-          getPoint(pose, "right_hip");
-
-        const ankleY = averageY([
-          leftAnkle,
-          rightAnkle
-        ]);
-
-        const hipY = averageY([
-          leftHip,
-          rightHip
-        ]);
-
-        if (ankleY !== null && hipY !== null) {
-
-          samples.push({
-            ankle: ankleY,
-            hip: hipY
-          });
-
+            return;
         }
-      }
 
-      frameCount++;
+        skipStatus.textContent =
+            "✅ Video loaded successfully. Duration: " +
+            duration.toFixed(1) +
+            " seconds. Ready for body-tracking AI.";
 
-      video.currentTime += 0.10;
+    } catch (error) {
 
-      if (video.currentTime >= video.duration) {
-        break;
-      }
+        console.error(error);
 
-      await new Promise(
-        resolve => setTimeout(resolve, 15)
-      );
+        skipStatus.textContent =
+            "❌ Video could not be analyzed. Try another MP4 video.";
     }
-
-    video.pause();
-
-    const detected =
-      countSkippingCycles(samples);
-
-    skipCount += detected;
-
-    if (skipCount > 10000) {
-      skipCount = 10000;
-    }
-
-    localStorage.setItem(
-      "skipCount",
-      skipCount
-    );
-
-    updateScreen();
-
-    status.textContent =
-      "Analysis complete. Estimated skips: " +
-      detected;
-
-  } catch (error) {
-
-    console.error(error);
-
-    status.textContent =
-      "Could not analyze this video. Try a clearer full-body recording.";
-  }
 }
 
 
-/* ---------------------------
-   SKIP CYCLE DETECTOR
----------------------------- */
-
-function countSkippingCycles(samples) {
-
-  if (samples.length < 10) {
-    return 0;
-  }
-
-  const signal = samples.map(
-    s => s.ankle - s.hip
-  );
-
-  let smoothed = [];
-
-  const windowSize = 3;
-
-  for (let i = 0; i < signal.length; i++) {
-
-    let total = 0;
-    let count = 0;
-
-    for (
-      let j = Math.max(0, i - windowSize);
-      j <= Math.min(signal.length - 1, i + windowSize);
-      j++
-    ) {
-
-      total += signal[j];
-      count++;
-    }
-
-    smoothed.push(total / count);
-  }
-
-  let jumps = 0;
-  let rising = false;
-
-  for (let i = 1; i < smoothed.length; i++) {
-
-    const difference =
-      smoothed[i] - smoothed[i - 1];
-
-    if (difference < -2) {
-      rising = true;
-    }
-
-    if (
-      rising &&
-      difference > 2
-    ) {
-
-      jumps++;
-      rising = false;
-    }
-  }
-
-  return Math.min(jumps, 10000);
-}
-
-
-/* ---------------------------
-   PUSH-UP ANALYSIS
----------------------------- */
+/* PUSH-UP ANALYSIS */
 
 async function analyzePushups() {
 
-  const input =
-    document.getElementById("pushVideo");
+    if (!pushVideo.files || !pushVideo.files[0]) {
 
-  const status =
-    document.getElementById("pushStatus");
+        pushStatus.textContent =
+            "❌ Please choose a video first.";
 
-  const video =
-    document.getElementById("pushVideoPreview");
+        return;
+    }
 
-  if (!input.files.length) {
+    pushStatus.textContent =
+        "⏳ Preparing push-up video...";
 
-    status.textContent =
-      "Please choose a push-up video first.";
+    const video = pushPreview;
 
-    return;
-  }
+    try {
 
-  try {
+        await video.play();
 
-    status.textContent =
-      "Loading AI body-tracking model...";
+        pushStatus.textContent =
+            "🧠 Preparing body-movement tracking...";
 
-    const model = await loadAI();
+        const duration = video.duration;
 
-    status.textContent =
-      "Analyzing push-up movement...";
+        video.pause();
 
-    await video.play();
+        if (!duration || !isFinite(duration)) {
 
-    let samples = [];
+            pushStatus.textContent =
+                "❌ Video duration could not be read.";
 
-    while (!video.ended) {
-
-      const poses =
-        await model.estimatePoses(video);
-
-      if (poses.length) {
-
-        const pose = poses[0];
-
-        const shoulder =
-          averageY([
-            getPoint(pose, "left_shoulder"),
-            getPoint(pose, "right_shoulder")
-          ]);
-
-        const hip =
-          averageY([
-            getPoint(pose, "left_hip"),
-            getPoint(pose, "right_hip")
-          ]);
-
-        if (
-          shoulder !== null &&
-          hip !== null
-        ) {
-
-          samples.push({
-            shoulder,
-            hip
-          });
+            return;
         }
-      }
 
-      video.currentTime += 0.10;
+        pushStatus.textContent =
+            "✅ Video loaded successfully. Duration: " +
+            duration.toFixed(1) +
+            " seconds. Ready for body-tracking AI.";
 
-      if (video.currentTime >= video.duration) {
-        break;
-      }
+    } catch (error) {
 
-      await new Promise(
-        resolve => setTimeout(resolve, 15)
-      );
+        console.error(error);
+
+        pushStatus.textContent =
+            "❌ Video could not be analyzed.";
     }
-
-    video.pause();
-
-    const detected =
-      countPushupCycles(samples);
-
-    pushCount += detected;
-
-    if (pushCount > 10000) {
-      pushCount = 10000;
-    }
-
-    localStorage.setItem(
-      "pushCount",
-      pushCount
-    );
-
-    updateScreen();
-
-    status.textContent =
-      "Analysis complete. Estimated push-ups: " +
-      detected;
-
-  } catch (error) {
-
-    console.error(error);
-
-    status.textContent =
-      "Could not analyze this video. Try a clear side-view recording.";
-  }
 }
 
-
-/* ---------------------------
-   PUSH-UP CYCLE DETECTOR
----------------------------- */
-
-function countPushupCycles(samples) {
-
-  if (samples.length < 10) {
-    return 0;
-  }
-
-  const signal = samples.map(
-    s => s.shoulder - s.hip
-  );
-
-  let down = false;
-  let count = 0;
-
-  for (let i = 1; i < signal.length; i++) {
-
-    const change =
-      signal[i] - signal[i - 1];
-
-    if (change > 1.5) {
-      down = true;
-    }
-
-    if (
-      down &&
-      change < -1.5
-    ) {
-
-      count++;
-      down = false;
-    }
-  }
-
-  return Math.min(count, 10000);
-}
-
-
-/* ---------------------------
-   START
----------------------------- */
 
 updateScreen();

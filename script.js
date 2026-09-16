@@ -1,1142 +1,639 @@
-// ==========================================
-// SKIPFIT AI V6
-// CAMERA + FILE + ACTUAL SKIP COUNTING
-// ==========================================
+import {
+  PoseLandmarker,
+  FilesetResolver
+} from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/+esm";
 
-const camera =
-  document.getElementById("camera");
+const statusText = document.getElementById("status");
+const camera = document.getElementById("camera");
+const liveCountText = document.getElementById("liveCount");
 
-const cameraCanvas =
-  document.getElementById("cameraCanvas");
+const fileInput = document.getElementById("videoFile");
+const fileVideo = document.getElementById("fileVideo");
+const analyzeBtn = document.getElementById("analyzeBtn");
+const fileCountText = document.getElementById("fileCount");
+const fileStatus = document.getElementById("fileStatus");
 
-const cameraCtx =
-  cameraCanvas.getContext("2d");
+let poseLandmarker;
+let stream = null;
+let animationId = null;
+let recording = null;
+let recordedChunks = [];
 
-const openCameraBtn =
-  document.getElementById("openCameraBtn");
+let liveCount = 0;
+let lastJump = false;
+let lastCountTime = 0;
 
-const recordBtn =
-  document.getElementById("recordBtn");
+const MODEL_URL =
+"https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task";
 
-const cameraStatus =
-  document.getElementById("cameraStatus");
+async function loadAI(){
 
-const liveCount =
-  document.getElementById("liveCount");
+  try{
 
-const videoFile =
-  document.getElementById("videoFile");
+    statusText.textContent = "Loading AI body tracker...";
 
-const fileVideo =
-  document.getElementById("fileVideo");
+    const vision = await FilesetResolver.forVisionTasks(
+      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/wasm"
+    );
 
-const analyzeFileBtn =
-  document.getElementById("analyzeFileBtn");
+    poseLandmarker = await PoseLandmarker.createFromOptions(
+      vision,
+      {
+        baseOptions:{
+          modelAssetPath:MODEL_URL,
+          delegate:"GPU"
+        },
 
-const fileCount =
-  document.getElementById("fileCount");
+        runningMode:"VIDEO",
 
-const fileStatus =
-  document.getElementById("fileStatus");
+        numPoses:1,
 
-const recordedVideo =
-  document.getElementById("recordedVideo");
+        minPoseDetectionConfidence:0.5,
+        minPosePresenceConfidence:0.5,
+        minTrackingConfidence:0.5
+      }
+    );
 
-const recordStatus =
-  document.getElementById("recordStatus");
+    statusText.textContent = "✅ AI ready";
 
-const totalSkipsBox =
-  document.getElementById("totalSkips");
+  }catch(error){
 
-const taskBox =
-  document.getElementById("skipTask");
+    console.error(error);
 
-const progressBar =
-  document.getElementById("skipProgress");
-
-
-// ==========================================
-// DATA
-// ==========================================
-
-let totalSkips =
-  Number(localStorage.getItem("skipCount") || 0);
-
-let sessionSkips = 0;
-
-let cameraStream = null;
-
-let recorder = null;
-
-let chunks = [];
-
-let recording = false;
-
-let pose = null;
-
-let cameraRunning = false;
-
-let processingFile = false;
-
-
-// ==========================================
-// SKIP DETECTOR
-// ==========================================
-
-class SkipDetector {
-
-  constructor() {
-
-    this.values = [];
-
-    this.lastCountTime = 0;
-
-    this.state = "down";
-
-    this.count = 0;
-
+    statusText.textContent =
+      "❌ AI failed to load. Refresh the page.";
   }
+}
 
+loadAI();
 
-  reset() {
+async function startCamera(mode){
 
-    this.values = [];
+  stopCamera();
 
-    this.lastCountTime = 0;
+  try{
 
-    this.state = "down";
-
-    this.count = 0;
-
-  }
-
-
-  add(value, time) {
-
-    this.values.push({
-      value: value,
-      time: time
+    stream = await navigator.mediaDevices.getUserMedia({
+      video:{
+        facingMode:mode,
+        width:{ideal:640},
+        height:{ideal:480}
+      },
+      audio:false
     });
 
+    camera.srcObject = stream;
 
-    if (this.values.length > 7) {
-      this.values.shift();
-    }
+    await camera.play();
 
+    statusText.textContent =
+      "🟢 Camera running — start skipping";
 
-    if (this.values.length < 5) {
-      return false;
-    }
+    liveCount = 0;
+    liveCountText.textContent = "0";
 
+    lastJump = false;
+    lastCountTime = 0;
 
-    const n =
-      this.values.length;
+    detectCamera();
 
+  }catch(error){
 
-    const a =
-      this.values[n - 5].value;
+    console.error(error);
 
-    const b =
-      this.values[n - 4].value;
-
-    const c =
-      this.values[n - 3].value;
-
-    const d =
-      this.values[n - 2].value;
-
-    const e =
-      this.values[n - 1].value;
-
-
-    /*
-     * Normalize movement.
-     *
-     * During a jump the feet move
-     * upward relative to the hips.
-     *
-     * We look for:
-     *
-     * DOWN → UP → DOWN
-     */
-
-
-    const rising =
-      a > b &&
-      b > c;
-
-
-    const falling =
-      c < d &&
-      d < e;
-
-
-    if (
-      rising &&
-      this.state === "down"
-    ) {
-
-      this.state = "up";
-
-    }
-
-
-    if (
-      falling &&
-      this.state === "up"
-    ) {
-
-      if (
-        time -
-        this.lastCountTime >
-        0.25
-      ) {
-
-        this.count++;
-
-        this.lastCountTime =
-          time;
-
-        this.state =
-          "down";
-
-        return true;
-      }
-
-      this.state =
-        "down";
-    }
-
-
-    return false;
+    statusText.textContent =
+      "❌ Camera permission/error.";
   }
 }
 
+function stopCamera(){
 
-// ==========================================
-// BODY VALUE
-// ==========================================
-
-function getBodyValue(results) {
-
-  if (
-    !results ||
-    !results.poseLandmarks ||
-    !results.poseLandmarks.length
-  ) {
-    return null;
+  if(animationId){
+    cancelAnimationFrame(animationId);
+    animationId = null;
   }
 
+  if(stream){
 
-  const p =
-    results.poseLandmarks;
+    stream.getTracks().forEach(track=>{
+      track.stop();
+    });
 
+    stream = null;
+  }
 
-  const leftHip =
-    p[23];
+  camera.srcObject = null;
+}
 
-  const rightHip =
-    p[24];
+function getSignal(landmarks){
 
-  const leftAnkle =
-    p[27];
+  if(!landmarks) return null;
 
-  const rightAnkle =
-    p[28];
+  const leftAnkle = landmarks[27];
+  const rightAnkle = landmarks[28];
 
-  const leftKnee =
-    p[25];
+  const leftHip = landmarks[23];
+  const rightHip = landmarks[24];
 
-  const rightKnee =
-    p[26];
-
-
-  if (
-    !leftHip ||
-    !rightHip ||
+  if(
     !leftAnkle ||
-    !rightAnkle
-  ) {
+    !rightAnkle ||
+    !leftHip ||
+    !rightHip
+  ){
     return null;
   }
-
-
-  const hipY =
-    (
-      leftHip.y +
-      rightHip.y
-    ) / 2;
-
 
   const ankleY =
-    (
-      leftAnkle.y +
-      rightAnkle.y
-    ) / 2;
+    (leftAnkle.y + rightAnkle.y) / 2;
 
+  const hipY =
+    (leftHip.y + rightHip.y) / 2;
 
-  /*
-   * Add knee information to make
-   * the measurement more stable.
-   */
-
-  let kneeY =
-    (
-      leftKnee.y +
-      rightKnee.y
-    ) / 2;
-
-
-  /*
-   * Feet relative to hips.
-   *
-   * Smaller value = feet are higher.
-   */
-
-  const footHip =
-    ankleY - hipY;
-
-
-  /*
-   * Knee angle contribution.
-   *
-   * This helps distinguish actual
-   * jumping from small tracking noise.
-   */
-
-  const kneeHip =
-    kneeY - hipY;
-
-
-  return {
-    footHip: footHip,
-    kneeHip: kneeHip
-  };
+  return ankleY - hipY;
 }
 
+let signalHistory = [];
 
-// ==========================================
-// COMBINED MOVEMENT SIGNAL
-// ==========================================
+function processSignal(signal){
 
-function movementSignal(body) {
+  if(signal === null) return;
 
-  /*
-   * Foot movement is the main signal.
-   * Knee movement is secondary.
-   */
+  signalHistory.push(signal);
 
-  return (
-    body.footHip * 0.75 +
-    body.kneeHip * 0.25
-  );
-}
-
-
-// ==========================================
-// UI
-// ==========================================
-
-function updateUI() {
-
-  liveCount.textContent =
-    sessionSkips;
-
-  totalSkipsBox.textContent =
-    totalSkips;
-
-  taskBox.textContent =
-    Math.min(totalSkips, 1000)
-    + " / 1000";
-
-  progressBar.style.width =
-    Math.min(totalSkips / 10, 100)
-    + "%";
-}
-
-
-updateUI();
-
-
-// ==========================================
-// MEDIAPIPE
-// ==========================================
-
-pose = new Pose({
-
-  locateFile: function(file) {
-
-    return (
-      "https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5/" +
-      file
-    );
-
+  if(signalHistory.length > 15){
+    signalHistory.shift();
   }
 
-});
-
-
-pose.setOptions({
-
-  modelComplexity: 2,
-
-  smoothLandmarks: true,
-
-  enableSegmentation: false,
-
-  smoothSegmentation: false,
-
-  minDetectionConfidence: 0.55,
-
-  minTrackingConfidence: 0.55
-
-});
-
-
-let activeDetector = null;
-
-
-// ==========================================
-// CAMERA RESULT
-// ==========================================
-
-const liveDetector =
-  new SkipDetector();
-
-
-pose.onResults(function(results) {
-
-  if (!cameraRunning) {
+  if(signalHistory.length < 8){
     return;
   }
 
+  const avg =
+    signalHistory.reduce((a,b)=>a+b,0) /
+    signalHistory.length;
 
-  drawPose(results);
-
-
-  const body =
-    getBodyValue(results);
-
-
-  if (!body) {
-
-    cameraStatus.textContent =
-      "🟡 Looking for complete body...";
-
-    return;
-  }
-
-
-  const value =
-    movementSignal(body);
-
-
-  const now =
-    performance.now() / 1000;
-
-
-  if (
-    liveDetector.add(
-      value,
-      now
-    )
-  ) {
-
-    sessionSkips++;
-
-    updateUI();
-  }
-
-
-  cameraStatus.innerHTML =
-    "🟢 Body detected<br>" +
-    "🦴 Advanced pose tracking active";
-
-});
-
-
-// ==========================================
-// DRAW SKELETON
-// ==========================================
-
-function drawPose(results) {
-
-  if (
-    !results.poseLandmarks
-  ) {
-    return;
-  }
-
-
-  cameraCtx.clearRect(
-    0,
-    0,
-    cameraCanvas.width,
-    cameraCanvas.height
-  );
-
-
-  const points =
-    results.poseLandmarks;
-
-
-  const lines = [
-
-    [11, 12],
-
-    [11, 13],
-    [13, 15],
-
-    [12, 14],
-    [14, 16],
-
-    [11, 23],
-    [12, 24],
-
-    [23, 24],
-
-    [23, 25],
-    [25, 27],
-
-    [24, 26],
-    [26, 28]
-
+  const current = signalHistory[
+    signalHistory.length - 1
   ];
 
+  const now = performance.now();
 
-  cameraCtx.lineWidth = 3;
+  /*
+    Smaller ankle-to-hip distance means
+    feet are higher relative to the body.
+  */
 
+  const jumpThreshold = 0.42;
 
-  for (
-    const line of lines
-  ) {
+  const isJump =
+    current < avg - 0.025 &&
+    current < jumpThreshold;
 
-    const a =
-      points[line[0]];
+  if(
+    isJump &&
+    !lastJump &&
+    now - lastCountTime > 250
+  ){
 
-    const b =
-      points[line[1]];
+    liveCount++;
 
+    liveCountText.textContent =
+      liveCount.toLocaleString();
 
-    if (!a || !b) {
-      continue;
-    }
-
-
-    cameraCtx.beginPath();
-
-    cameraCtx.moveTo(
-      a.x * cameraCanvas.width,
-      a.y * cameraCanvas.height
-    );
-
-    cameraCtx.lineTo(
-      b.x * cameraCanvas.width,
-      b.y * cameraCanvas.height
-    );
-
-    cameraCtx.stroke();
+    lastCountTime = now;
   }
 
-
-  for (
-    const p of points
-  ) {
-
-    cameraCtx.beginPath();
-
-    cameraCtx.arc(
-      p.x * cameraCanvas.width,
-      p.y * cameraCanvas.height,
-      4,
-      0,
-      Math.PI * 2
-    );
-
-    cameraCtx.fill();
-  }
+  lastJump = isJump;
 }
 
+function detectCamera(){
 
-// ==========================================
-// CAMERA
-// ==========================================
+  if(!stream || !poseLandmarker) return;
 
-openCameraBtn.onclick =
-  async function() {
+  if(camera.readyState < 2){
 
-    try {
+    animationId =
+      requestAnimationFrame(detectCamera);
 
-      cameraStatus.textContent =
-        "📷 Opening camera...";
-
-
-      cameraStream =
-        await navigator.mediaDevices.getUserMedia({
-
-          video: {
-            facingMode: "user",
-            width: {
-              ideal: 720
-            },
-            height: {
-              ideal: 1280
-            }
-          },
-
-          audio: true
-
-        });
-
-
-      camera.srcObject =
-        cameraStream;
-
-
-      await camera.play();
-
-
-      cameraCanvas.width =
-        camera.videoWidth;
-
-      cameraCanvas.height =
-        camera.videoHeight;
-
-
-      cameraRunning =
-        true;
-
-
-      recordBtn.disabled =
-        false;
-
-
-      openCameraBtn.textContent =
-        "🟢 Camera Active";
-
-
-      cameraStatus.textContent =
-        "🟢 Camera ready. Keep your complete body visible.";
-
-
-      processCamera();
-
-
-    }
-    catch (error) {
-
-      cameraStatus.innerHTML =
-        "❌ Camera error<br><br>" +
-        error.message;
-
-    }
-
-  };
-
-
-// ==========================================
-// CAMERA LOOP
-// ==========================================
-
-async function processCamera() {
-
-  if (!cameraRunning) {
     return;
   }
 
+  const timestamp =
+    performance.now();
 
-  try {
-
-    if (
-      camera.readyState >= 2
-    ) {
-
-      await pose.send({
-        image: camera
-      });
-
-    }
-
-  }
-  catch (error) {
-
-    console.log(
-      "Camera AI error:",
-      error
+  const result =
+    poseLandmarker.detectForVideo(
+      camera,
+      timestamp
     );
 
+  if(
+    result.landmarks &&
+    result.landmarks.length
+  ){
+
+    const signal =
+      getSignal(result.landmarks[0]);
+
+    processSignal(signal);
+
+  }else{
+
+    statusText.textContent =
+      "⚠️ Body not clearly visible";
   }
 
-
-  requestAnimationFrame(
-    processCamera
-  );
+  animationId =
+    requestAnimationFrame(detectCamera);
 }
 
+document
+.getElementById("frontBtn")
+.addEventListener("click",()=>{
+  startCamera("user");
+});
 
-// ==========================================
-// RECORDING
-// ==========================================
+document
+.getElementById("rearBtn")
+.addEventListener("click",()=>{
+  startCamera("environment");
+});
 
-recordBtn.onclick =
-  function() {
+document
+.getElementById("openCamera")
+.addEventListener("click",()=>{
+  startCamera("user");
+});
 
-    if (!cameraStream) {
-      return;
+document
+.getElementById("stopCamera")
+.addEventListener("click",()=>{
+  stopCamera();
+  statusText.textContent =
+    "Camera stopped";
+});
+
+document
+.getElementById("recordBtn")
+.addEventListener("click",()=>{
+
+  if(!stream){
+
+    alert("Open the camera first.");
+    return;
+  }
+
+  if(recording && recording.state === "recording"){
+
+    recording.stop();
+
+    document.getElementById("recordBtn")
+      .textContent = "🔴 Start Recording";
+
+    return;
+  }
+
+  recordedChunks = [];
+
+  let mime = "video/webm";
+
+  if(
+    MediaRecorder.isTypeSupported(
+      "video/webm;codecs=vp9"
+    )
+  ){
+    mime = "video/webm;codecs=vp9";
+  }
+
+  recording = new MediaRecorder(
+    stream,
+    {mimeType:mime}
+  );
+
+  recording.ondataavailable = e => {
+
+    if(e.data.size > 0){
+      recordedChunks.push(e.data);
     }
-
-
-    if (!recording) {
-
-      chunks = [];
-
-
-      recorder =
-        new MediaRecorder(
-          cameraStream
-        );
-
-
-      recorder.ondataavailable =
-        function(event) {
-
-          if (
-            event.data.size > 0
-          ) {
-
-            chunks.push(
-              event.data
-            );
-
-          }
-
-        };
-
-
-      recorder.onstop =
-        function() {
-
-          const blob =
-            new Blob(
-              chunks,
-              {
-                type:
-                  "video/webm"
-              }
-            );
-
-
-          recordedVideo.src =
-            URL.createObjectURL(
-              blob
-            );
-
-
-          recordedVideo.style.display =
-            "block";
-
-
-          recordStatus.textContent =
-            "✅ Recording ready.";
-
-        };
-
-
-      recorder.start();
-
-
-      recording =
-        true;
-
-
-      recordBtn.textContent =
-        "⏹ Stop Recording";
-
-
-    }
-    else {
-
-      recorder.stop();
-
-      recording =
-        false;
-
-
-      recordBtn.textContent =
-        "🔴 Start Recording";
-
-    }
-
   };
 
-
-// ==========================================
-// CHOOSE FILE
-// ==========================================
-
-videoFile.onchange =
-  function() {
-
-    const file =
-      this.files[0];
-
-
-    if (!file) {
-      return;
-    }
-
-
-    fileVideo.src =
-      URL.createObjectURL(
-        file
-      );
-
-
-    fileVideo.style.display =
-      "block";
-
-
-    analyzeFileBtn.disabled =
-      false;
-
-
-    fileStatus.innerHTML =
-      "✅ Video loaded.<br>" +
-      file.name;
-
-  };
-
-
-// ==========================================
-// FILE VIDEO ANALYSIS
-// ==========================================
-
-analyzeFileBtn.onclick =
-  async function() {
-
-    if (
-      processingFile
-    ) {
-      return;
-    }
-
-
-    processingFile =
-      true;
-
-
-    analyzeFileBtn.disabled =
-      true;
-
-
-    const detector =
-      new SkipDetector();
-
-
-    fileCount.textContent =
-      "0";
-
-
-    try {
-
-      fileVideo.pause();
-
-      fileVideo.currentTime =
-        0;
-
-
-      await waitForVideo(
-        fileVideo
-      );
-
-
-      const duration =
-        fileVideo.duration;
-
-
-      const step =
-        0.08;
-
-
-      let frames =
-        0;
-
-
-      fileStatus.innerHTML =
-        "🤖 Analyzing video...";
-
-
-      for (
-        let time = 0;
-        time < duration;
-        time += step
-      ) {
-
-        await seekVideo(
-          fileVideo,
-          time
-        );
-
-
-        try {
-
-          await pose.send({
-            image: fileVideo
-          });
-
-
-          /*
-           * pose.onResults handles
-           * live camera only.
-           *
-           * For file processing we
-           * call the detector directly
-           * below instead.
-           */
-
-          const body =
-            await detectFileFrame(
-              fileVideo
-            );
-
-
-          if (body) {
-
-            const value =
-              movementSignal(body);
-
-
-            detector.add(
-              value,
-              time
-            );
-
-          }
-
-
-          frames++;
-
-
-          fileCount.textContent =
-            detector.count;
-
-
-          const percent =
-            Math.round(
-              (time / duration) * 100
-            );
-
-
-          fileStatus.innerHTML =
-            "🤖 AI analyzing...<br><br>" +
-            "Progress: " +
-            percent +
-            "%<br>" +
-            "Frames: " +
-            frames +
-            "<br>" +
-            "Skips: " +
-            detector.count;
-
-        }
-        catch (error) {
-
-          console.log(
-            "File frame error:",
-            error
-          );
-
-        }
-
-      }
-
-
-      const detected =
-        detector.count;
-
-
-      fileCount.textContent =
-        detected;
-
-
-      /*
-       * Do not add the same result
-       * automatically to total.
-       *
-       * User can test repeatedly without
-       * corrupting their total.
-       */
-
-      fileStatus.innerHTML =
-        "✅ Analysis complete!<br><br>" +
-        "🪢 Skips detected: " +
-        detected +
-        "<br>" +
-        "Frames analyzed: " +
-        frames;
-
-
-    }
-    catch (error) {
-
-      fileStatus.innerHTML =
-        "❌ Analysis error<br><br>" +
-        error.message;
-
-    }
-    finally {
-
-      processingFile =
-        false;
-
-      analyzeFileBtn.disabled =
-        false;
-
-    }
-
-  };
-
-
-// ==========================================
-// FILE FRAME DETECTION
-// ==========================================
-
-async function detectFileFrame(
-  videoElement
-) {
-
-  /*
-   * MediaPipe's async send() returns
-   * through onResults.
-   *
-   * We capture the next result.
-   */
-
-  return new Promise(
-    function(resolve) {
-
-      const oldHandler =
-        pose.onResults;
-
-
-      pose.onResults =
-        function(results) {
-
-          pose.onResults =
-            oldHandler;
-
-
-          if (
-            !results.poseLandmarks
-          ) {
-
-            resolve(null);
-
-            return;
-          }
-
-
-          resolve(
-            getBodyValue(
-              results
-            )
-          );
-
-        };
-
-
-      pose.send({
-        image:
-          videoElement
+  recording.onstop = ()=>{
+
+    const blob =
+      new Blob(recordedChunks,{
+        type:mime
       });
 
-    }
-  );
-}
+    const url =
+      URL.createObjectURL(blob);
 
+    const video =
+      document.getElementById("recordedVideo");
 
-// ==========================================
-// WAIT VIDEO
-// ==========================================
+    video.src = url;
+    video.hidden = false;
 
-function waitForVideo(videoElement) {
+  };
 
-  return new Promise(
-    function(resolve, reject) {
+  recording.start();
 
-      if (
-        videoElement.readyState >= 2 &&
-        isFinite(videoElement.duration)
-      ) {
+  document.getElementById("recordBtn")
+    .textContent = "⏹ Stop Recording";
+});
 
-        resolve();
+/* FILE ANALYSIS */
 
+fileInput.addEventListener("change",()=>{
+
+  const file = fileInput.files[0];
+
+  if(!file) return;
+
+  const url =
+    URL.createObjectURL(file);
+
+  fileVideo.src = url;
+  fileVideo.hidden = false;
+
+  fileStatus.textContent =
+    "Video loaded. Press Analyze Video.";
+
+  fileCountText.textContent = "0";
+});
+
+function analyzeVideo(){
+
+  return new Promise(resolve=>{
+
+    const samples = [];
+
+    const duration =
+      fileVideo.duration;
+
+    const fps = 15;
+
+    const totalFrames =
+      Math.floor(duration * fps);
+
+    let frame = 0;
+
+    function nextFrame(){
+
+      if(frame >= totalFrames){
+
+        resolve(samples);
         return;
       }
 
+      const time =
+        frame / fps;
 
-      videoElement.onloadeddata =
-        function() {
+      fileVideo.currentTime = time;
 
-          resolve();
+      const waitForSeek = ()=>{
 
-        };
-
-
-      videoElement.onerror =
-        function() {
-
-          reject(
-            new Error(
-              "Video could not be loaded."
-            )
-          );
-
-        };
-
-    }
-  );
-
-}
-
-
-// ==========================================
-// SEEK VIDEO
-// ==========================================
-
-function seekVideo(
-  videoElement,
-  time
-) {
-
-  return new Promise(
-    function(resolve) {
-
-      function done() {
-
-        videoElement.removeEventListener(
+        fileVideo.removeEventListener(
           "seeked",
-          done
+          waitForSeek
         );
 
-        resolve();
+        try{
 
-      }
+          const result =
+            poseLandmarker.detectForVideo(
+              fileVideo,
+              Math.round(time * 1000000)
+            );
 
+          if(
+            result.landmarks &&
+            result.landmarks.length
+          ){
 
-      videoElement.addEventListener(
+            const signal =
+              getSignal(
+                result.landmarks[0]
+              );
+
+            if(signal !== null){
+              samples.push(signal);
+            }
+          }
+
+        }catch(error){
+          console.error(error);
+        }
+
+        frame++;
+
+        setTimeout(nextFrame,20);
+      };
+
+      fileVideo.addEventListener(
         "seeked",
-        done
+        waitForSeek
       );
-
-
-      videoElement.currentTime =
-        Math.min(
-          time,
-          videoElement.duration - 0.01
-        );
-
     }
+
+    nextFrame();
+  });
+}
+
+function countFromSamples(samples){
+
+  if(samples.length < 10){
+    return 0;
+  }
+
+  /*
+    Smooth the signal.
+  */
+
+  const smooth = [];
+
+  const windowSize = 5;
+
+  for(let i=0;i<samples.length;i++){
+
+    let sum = 0;
+    let count = 0;
+
+    for(
+      let j=i-windowSize;
+      j<=i+windowSize;
+      j++
+    ){
+
+      if(j>=0 && j<samples.length){
+
+        sum += samples[j];
+        count++;
+      }
+    }
+
+    smooth.push(sum/count);
+  }
+
+  let min =
+    Math.min(...smooth);
+
+  let max =
+    Math.max(...smooth);
+
+  const range = max-min;
+
+  if(range < 0.04){
+    return 0;
+  }
+
+  /*
+    Count alternating movement cycles.
+  */
+
+  const threshold =
+    range * 0.22;
+
+  let count = 0;
+
+  let state = "low";
+
+  let lastTime = -100;
+
+  for(let i=2;i<smooth.length-2;i++){
+
+    const prev = smooth[i-1];
+    const current = smooth[i];
+    const next = smooth[i+1];
+
+    /*
+      Local minimum = feet higher.
+    */
+
+    const isPeak =
+      current < prev &&
+      current < next &&
+      min + threshold > current;
+
+    if(
+      isPeak &&
+      state !== "peak" &&
+      i-lastTime >= 4
+    ){
+
+      count++;
+
+      state = "peak";
+      lastTime = i;
+    }
+
+    /*
+      Return toward lower position
+      before another skip can be counted.
+    */
+
+    if(
+      state === "peak" &&
+      current > min + threshold
+    ){
+
+      state = "low";
+    }
+  }
+
+  return count;
+}
+
+analyzeBtn.addEventListener("click",async()=>{
+
+  if(!poseLandmarker){
+
+    fileStatus.textContent =
+      "AI is still loading. Wait a moment.";
+
+    return;
+  }
+
+  if(!fileVideo.src){
+
+    fileStatus.textContent =
+      "Choose a video first.";
+
+    return;
+  }
+
+  analyzeBtn.disabled = true;
+
+  fileStatus.textContent =
+    "🧠 AI analyzing your video...";
+
+  try{
+
+    const samples =
+      await analyzeVideo();
+
+    const count =
+      countFromSamples(samples);
+
+    fileCountText.textContent =
+      count.toLocaleString();
+
+    fileStatus.textContent =
+      `✅ Analysis complete. ${count} skips detected.`;
+
+  }catch(error){
+
+    console.error(error);
+
+    fileStatus.textContent =
+      "❌ Video analysis failed.";
+
+  }finally{
+
+    analyzeBtn.disabled = false;
+  }
+});
+
+/* PROGRESS */
+
+const totalSkipsText =
+  document.getElementById("totalSkips");
+
+let savedTotal =
+  Number(localStorage.getItem("skipfitTotal") || 0);
+
+totalSkipsText.textContent =
+  savedTotal.toLocaleString();
+
+document
+.getElementById("saveBtn")
+.addEventListener("click",()=>{
+
+  savedTotal += liveCount;
+
+  localStorage.setItem(
+    "skipfitTotal",
+    savedTotal
   );
 
-}
+  totalSkipsText.textContent =
+    savedTotal.toLocaleString();
+
+  alert(
+    `${liveCount} skips saved!`
+  );
+});
+
+document
+.getElementById("resetBtn")
+.addEventListener("click",()=>{
+
+  savedTotal = 0;
+
+  localStorage.setItem(
+    "skipfitTotal",
+    "0"
+  );
+
+  totalSkipsText.textContent = "0";
+});

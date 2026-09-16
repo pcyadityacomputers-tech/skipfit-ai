@@ -12,56 +12,70 @@
 <header>
   <h1>SkipFit AI</h1>
   <p>By Aditya Kumar Yadav</p>
-  <span>Train • Count • Improve</span>
+  <small>AI Skipping Counter</small>
 </header>
 
 <main>
 
-<section class="card">
-  <h2>🪢 Skipping Counter</h2>
-  <div id="status">Loading AI...</div>
+  <section class="camera-card">
 
-  <div class="counter" id="liveCount">0</div>
-  <p>SKIPS</p>
+    <div class="status" id="status">
+      Loading AI...
+    </div>
 
-  <video id="camera" autoplay playsinline muted></video>
-  <canvas id="canvas"></canvas>
+    <div class="camera-wrap">
+      <video id="camera" autoplay muted playsinline></video>
+      <canvas id="overlay"></canvas>
+    </div>
 
-  <div class="buttons">
-    <button id="frontBtn">Front Camera</button>
-    <button id="rearBtn">Rear Camera</button>
-    <button id="openCamera">Open Camera</button>
-    <button id="stopCamera">Stop Camera</button>
-  </div>
+    <div class="detection">
+      <span id="head">HEAD ○</span>
+      <span id="hands">HANDS ○</span>
+      <span id="legs">LEGS ○</span>
+    </div>
 
-  <hr>
+    <div class="stage" id="stage">
+      AI INITIALIZING
+    </div>
 
-  <button id="recordBtn">🔴 Start Recording</button>
-  <video id="recordedVideo" controls playsinline hidden></video>
-</section>
+    <div class="calibration">
+      <div class="cal-title">5-JUMP CALIBRATION</div>
+      <div class="cal-number" id="calibrationCount">0 / 5</div>
+      <div class="bar">
+        <div id="barFill"></div>
+      </div>
+    </div>
 
-<section class="card">
-  <h2>📁 Analyze Skipping Video</h2>
+    <div class="count-title">
+      SKIPS
+    </div>
 
-  <input id="videoFile" type="file" accept="video/*">
+    <div class="count" id="skipCount">
+      0
+    </div>
 
-  <video id="fileVideo" controls playsinline hidden></video>
+    <button id="startBtn">
+      START CAMERA
+    </button>
 
-  <button id="analyzeBtn">🧠 Analyze Video</button>
+    <button id="calibrateBtn" disabled>
+      START 5-JUMP CALIBRATION
+    </button>
 
-  <div class="counter small" id="fileCount">0</div>
-  <p>DETECTED SKIPS</p>
+    <button id="stopBtn" disabled>
+      STOP
+    </button>
 
-  <p id="fileStatus">Choose a video.</p>
-</section>
+    <div class="instructions">
+      <b>How to use</b>
+      <p>1. Keep your whole body visible.</p>
+      <p>2. Start the camera.</p>
+      <p>3. Complete 5 normal jumps.</p>
+      <p>4. Wait for pattern confirmation.</p>
+      <p>5. Continue skipping. AI counts automatically.</p>
+    </div>
 
-<section class="card">
-  <h2>📊 Progress</h2>
-  <div class="progressNumber" id="totalSkips">0</div>
-  <p>TOTAL SAVED SKIPS</p>
-  <button id="saveBtn">Save Current Count</button>
-  <button id="resetBtn">Reset Progress</button>
-</section>
+  </section>
 
 </main>
 

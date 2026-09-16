@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <title>SkipFit AI - Aditya Kumar Yadav</title>
+
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+  <header>
+    <h1>⚡ SkipFit AI</h1>
+    <p class="creator">By Aditya Kumar Yadav</p>
+    <p class="tagline">Train. Count. Improve.</p>
+  </header>
+
+  <main>
+
+    <!-- DAILY TASKS -->
+    <section class="card">
+      <h2>📅 Today's Tasks</h2>
+
+      <div class="task">
+        <span>🪢 Skipping</span>
+        <strong id="skipTask">0 / 1000</strong>
+      </div>
+
+      <div class="task">
+        <span>💪 Push-ups</span>
+        <strong id="pushTask">0 / 50</strong>
+      </div>
+
+      <div class="progress">
+        <div id="skipProgress"></div>
+      </div>
+
+      <div class="progress">
+        <div id="pushProgress"></div>
+      </div>
+    </section>
+
+
+    <!-- SKIPPING -->
+    <section class="card">
+      <h2>🪢 Skipping Counter</h2>
+
+      <div class="counter" id="skipCount">0</div>
+      <p>Maximum: 10,000+</p>
+
+      <div class="buttons">
+        <button onclick="addSkip()">+1 Skip</button>
+        <button onclick="resetSkip()">Reset</button>
+      </div>
+
+      <hr>
+
+      <h3>🎥 Video Analysis</h3>
+
+      <input
+        type="file"
+        id="skipVideo"
+        accept="video/*"
+      >
+
+      <button onclick="analyzeVideo()">
+        Analyze Skipping Video
+      </button>
+
+      <p id="videoStatus">
+        Upload a clear full-body video.
+      </p>
+    </section>
+
+
+    <!-- PUSH UPS -->
+    <section class="card">
+      <h2>💪 Push-up Counter</h2>
+
+      <div class="counter" id="pushCount">0</div>
+
+      <div class="buttons">
+        <button onclick="addPush()">+1 Push-up</button>
+        <button onclick="resetPush()">Reset</button>
+      </div>
+
+      <hr>
+
+      <h3>🎥 Push-up Video</h3>
+
+      <input
+        type="file"
+        id="pushVideo"
+        accept="video/*"
+      >
+
+      <button onclick="analyzePushVideo()">
+        Analyze Push-up Video
+      </button>
+
+      <p id="pushStatus">
+        Keep your complete body visible.
+      </p>
+    </section>
+
+
+    <!-- PROGRESS -->
+    <section class="card">
+      <h2>📊 My Progress</h2>
+
+      <div class="stats">
+        <div>
+          <span>Total Skips</span>
+          <strong id="totalSkips">0</strong>
+        </div>
+
+        <div>
+          <span>Total Push-ups</span>
+          <strong id="totalPushups">0</strong>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+
+  <footer>
+    <p>SkipFit AI</p>
+    <p>Created by Aditya Kumar Yadav</p>
+    <small>Keep training consistently.</small>
+  </footer>
+
+
+  <script src="script.js"></script>
+
+</body>
+  </html>

@@ -1,6 +1,6 @@
 // ==========================================
-// SKIPFIT AI V3
-// REAL FRAME-BY-FRAME MOVEMENT COUNTER
+// SKIPFIT AI V3.1
+// FRAME-BY-FRAME SKIPPING COUNTER
 // ==========================================
 
 const videoInput = document.getElementById("skipVideo");
@@ -20,31 +20,35 @@ let totalSkips =
 
 
 // ==========================================
-// UPDATE UI
+// UPDATE SCREEN
 // ==========================================
 
 function updateUI() {
 
-    if (countBox)
+    if (countBox) {
         countBox.textContent = totalSkips;
+    }
 
-    if (totalBox)
+    if (totalBox) {
         totalBox.textContent = totalSkips;
+    }
 
-    if (taskBox)
+    if (taskBox) {
         taskBox.textContent =
-            Math.min(totalSkips, 1000) + "/1000";
+            Math.min(totalSkips, 1000) + " / 1000";
+    }
 
-    if (progressBar)
+    if (progressBar) {
         progressBar.style.width =
             Math.min(totalSkips / 10, 100) + "%";
+    }
 }
 
 updateUI();
 
 
 // ==========================================
-// VIDEO SELECTED
+// VIDEO SELECT
 // ==========================================
 
 if (videoInput) {
@@ -53,8 +57,9 @@ if (videoInput) {
 
         const file = this.files[0];
 
-        if (!file)
+        if (!file) {
             return;
+        }
 
         video.src = URL.createObjectURL(file);
 
@@ -76,8 +81,9 @@ if (videoInput) {
 
 async function loadMoveNet() {
 
-    if (detector)
+    if (detector) {
         return detector;
+    }
 
     statusBox.innerHTML =
         "🤖 Loading MoveNet AI...";
@@ -85,14 +91,14 @@ async function loadMoveNet() {
     if (!window.tf) {
 
         throw new Error(
-            "TensorFlow.js is missing from index.html"
+            "TensorFlow.js is missing."
         );
     }
 
     if (!window.poseDetection) {
 
         throw new Error(
-            "MoveNet library is missing from index.html"
+            "MoveNet library is missing."
         );
     }
 
@@ -112,13 +118,14 @@ async function loadMoveNet() {
 
 
 // ==========================================
-// ANALYZE BUTTON
+// MAIN ANALYSIS
 // ==========================================
 
 async function analyzeSkipping() {
 
-    if (analyzing)
+    if (analyzing) {
         return;
+    }
 
     if (
         !videoInput ||
@@ -127,7 +134,7 @@ async function analyzeSkipping() {
     ) {
 
         statusBox.textContent =
-            "❌ Select a video first.";
+            "❌ Select a skipping video first.";
 
         return;
     }
@@ -136,7 +143,6 @@ async function analyzeSkipping() {
 
     try {
 
-        // Load AI
         const ai =
             await loadMoveNet();
 
@@ -152,57 +158,53 @@ async function analyzeSkipping() {
         ) {
 
             throw new Error(
-                "Video duration is unavailable."
+                "Video duration unavailable."
             );
         }
 
-        // Reset video
         video.pause();
-
         video.currentTime = 0;
 
         await waitForSeek();
 
-        // Reset detector
-        let previousFoot = null;
+        // ==================================
+        // VARIABLES
+        // ==================================
+
+        let previousPosition = null;
+
         let previousTime = 0;
 
         let direction = 0;
 
-        let goingUp = false;
+        let upwardMovement = false;
 
         let videoSkips = 0;
 
         let frames = 0;
+
         let detectedFrames = 0;
 
         const duration =
             video.duration;
 
-        statusBox.innerHTML =
-            "🎥 Starting frame-by-frame AI analysis...";
-
-        /*
-         * We process the video at approximately
-         * 10 frames per second.
-         *
-         * This is intentionally lighter for
-         * mobile devices.
-         */
-
+        // Process approximately 10 frames/sec.
         const frameStep = 0.10;
 
+
+        // ==================================
+        // PROCESS VIDEO FRAME BY FRAME
+        // ==================================
+
         for (
-            let t = 0;
-            t < duration;
-            t += frameStep
+            let time = 0;
+            time < duration;
+            time += frameStep
         ) {
 
-            await seekTo(t);
+            await seekTo(time);
 
             frames++;
-
-            let pose;
 
             try {
 
@@ -215,7 +217,7 @@ async function analyzeSkipping() {
                 ) {
 
                     updateProgress(
-                        t,
+                        time,
                         duration,
                         frames,
                         detectedFrames,
@@ -225,178 +227,214 @@ async function analyzeSkipping() {
                     continue;
                 }
 
-                pose = poses[0];
+                const pose =
+                    poses[0];
+
+
+                // ==============================
+                // GET KEYPOINTS
+                // ==============================
+
+                const leftAnkle =
+                    getPoint(
+                        pose,
+                        "left_ankle"
+                    );
+
+                const rightAnkle =
+                    getPoint(
+                        pose,
+                        "right_ankle"
+                    );
+
+                const leftHip =
+                    getPoint(
+                        pose,
+                        "left_hip"
+                    );
+
+                const rightHip =
+                    getPoint(
+                        pose,
+                        "right_hip"
+                    );
+
+                const leftShoulder =
+                    getPoint(
+                        pose,
+                        "left_shoulder"
+                    );
+
+                const rightShoulder =
+                    getPoint(
+                        pose,
+                        "right_shoulder"
+                    );
+
+
+                if (
+                    !leftAnkle ||
+                    !rightAnkle ||
+                    !leftHip ||
+                    !rightHip
+                ) {
+
+                    continue;
+                }
+
+                detectedFrames++;
+
+
+                // ==============================
+                // BODY CENTER
+                // ==============================
+
+                const ankleY =
+                    (
+                        leftAnkle.y +
+                        rightAnkle.y
+                    ) / 2;
+
+                const hipY =
+                    (
+                        leftHip.y +
+                        rightHip.y
+                    ) / 2;
+
+
+                /*
+                 * IMPORTANT:
+                 *
+                 * Use shoulder-to-hip as the
+                 * normalization distance.
+                 *
+                 * We DO NOT divide ankle-to-hip
+                 * by itself.
+                 */
+
+                let bodyScale = 100;
+
+                if (
+                    leftShoulder &&
+                    rightShoulder
+                ) {
+
+                    const shoulderY =
+                        (
+                            leftShoulder.y +
+                            rightShoulder.y
+                        ) / 2;
+
+                    bodyScale =
+                        Math.max(
+                            Math.abs(
+                                hipY -
+                                shoulderY
+                            ),
+                            20
+                        );
+                }
+
+
+                // Feet position relative to hips
+                const relativePosition =
+                    (ankleY - hipY) /
+                    bodyScale;
+
+
+                // ==============================
+                // MOVEMENT DETECTION
+                // ==============================
+
+                if (
+                    previousPosition !== null
+                ) {
+
+                    const movement =
+                        relativePosition -
+                        previousPosition;
+
+
+                    /*
+                     * Video coordinates:
+                     *
+                     * smaller Y = higher
+                     * larger Y = lower
+                     *
+                     * Therefore negative movement
+                     * means feet moving upward.
+                     */
+
+
+                    // UP
+                    if (
+                        movement < -0.08 &&
+                        direction !== -1
+                    ) {
+
+                        direction = -1;
+
+                        upwardMovement = true;
+                    }
+
+
+                    // DOWN
+                    if (
+                        movement > 0.08 &&
+                        upwardMovement &&
+                        direction !== 1
+                    ) {
+
+                        direction = 1;
+
+
+                        /*
+                         * Complete jump:
+                         * UP → DOWN
+                         */
+
+                        if (
+                            time - previousTime >
+                            0.25
+                        ) {
+
+                            videoSkips++;
+
+                            previousTime =
+                                time;
+                        }
+
+                        upwardMovement = false;
+                    }
+                }
+
+
+                previousPosition =
+                    relativePosition;
+
+
+                updateProgress(
+                    time,
+                    duration,
+                    frames,
+                    detectedFrames,
+                    videoSkips
+                );
+
 
             } catch (error) {
 
                 console.log(
-                    "Pose error:",
+                    "Pose frame error:",
                     error
                 );
-
-                continue;
             }
-
-
-            // ----------------------------------
-            // FIND BODY POINTS
-            // ----------------------------------
-
-            const leftAnkle =
-                keypoint(
-                    pose,
-                    "left_ankle"
-                );
-
-            const rightAnkle =
-                keypoint(
-                    pose,
-                    "right_ankle"
-                );
-
-            const leftHip =
-                keypoint(
-                    pose,
-                    "left_hip"
-                );
-
-            const rightHip =
-                keypoint(
-                    pose,
-                    "right_hip"
-                );
-
-
-            if (
-                !leftAnkle ||
-                !rightAnkle ||
-                !leftHip ||
-                !rightHip
-            ) {
-
-                continue;
-            }
-
-            detectedFrames++;
-
-
-            // ----------------------------------
-            // AVERAGE BOTH FEET
-            // ----------------------------------
-
-            const footY =
-                (
-                    leftAnkle.y +
-                    rightAnkle.y
-                ) / 2;
-
-            const hipY =
-                (
-                    leftHip.y +
-                    rightHip.y
-                ) / 2;
-
-
-            /*
-             * Normalize the feet position.
-             * This makes the system less dependent
-             * on how close the camera is.
-             */
-
-            const bodyLength =
-                Math.max(
-                    Math.abs(
-                        footY - hipY
-                    ),
-                    1
-                );
-
-            const relativeFoot =
-                (footY - hipY) /
-                bodyLength;
-
-
-            // ----------------------------------
-            // MOVEMENT
-            // ----------------------------------
-
-            if (
-                previousFoot !== null
-            ) {
-
-                const movement =
-                    relativeFoot -
-                    previousFoot;
-
-                /*
-                 * Negative movement:
-                 * feet moving upward.
-                 */
-
-                if (
-                    movement < -0.015 &&
-                    direction !== -1
-                ) {
-
-                    direction = -1;
-                    goingUp = true;
-                }
-
-
-                /*
-                 * Positive movement:
-                 * feet moving downward.
-                 */
-
-                if (
-                    movement > 0.015 &&
-                    goingUp &&
-                    direction !== 1
-                ) {
-
-                    direction = 1;
-
-                    /*
-                     * One complete jump cycle.
-                     */
-
-                    if (
-                        t -
-                        previousTime >
-                        0.20
-                    {
-
-                        videoSkips++;
-
-                        previousTime = t;
-                    }
-
-                    goingUp = false;
-                }
-            }
-
-
-            previousFoot =
-                relativeFoot;
-
-
-            // ----------------------------------
-            // LIVE DISPLAY
-            // ----------------------------------
-
-            updateProgress(
-                t,
-                duration,
-                frames,
-                detectedFrames,
-                videoSkips
-            );
         }
 
 
-        // ======================================
-        // ADD RESULT
-        // ======================================
+        // ==================================
+        // SAVE RESULT
+        // ==================================
 
         totalSkips += videoSkips;
 
@@ -419,23 +457,23 @@ async function analyzeSkipping() {
             detectedFrames +
             "<br>" +
 
-            "Skips detected in video: " +
+            "Skips detected in this video: " +
             videoSkips +
             "<br><br>" +
 
-            "Total SkipFit count: " +
+            "Total SkipFit skips: " +
             totalSkips;
 
 
     } catch (error) {
 
         console.error(
-            "SkipFit V3 ERROR:",
+            "SkipFit V3.1 ERROR:",
             error
         );
 
         statusBox.innerHTML =
-            "❌ V3 AI ERROR<br><br>" +
+            "❌ AI ERROR<br><br>" +
             error.message;
 
     } finally {
@@ -446,66 +484,72 @@ async function analyzeSkipping() {
 
 
 // ==========================================
-// GET KEYPOINT
+// KEYPOINT
 // ==========================================
 
-function keypoint(pose, name) {
+function getPoint(pose, name) {
 
     if (
         !pose ||
         !pose.keypoints
-    )
+    ) {
         return null;
+    }
 
     const point =
         pose.keypoints.find(
-            p => p.name === name
+            function (p) {
+                return p.name === name;
+            }
         );
 
-    if (!point)
+    if (!point) {
         return null;
+    }
 
     if (
         typeof point.score === "number" &&
         point.score < 0.30
-    )
+    ) {
         return null;
+    }
 
     return point;
 }
 
 
 // ==========================================
-// SEEK VIDEO
+// SEEK
 // ==========================================
 
 function seekTo(time) {
 
-    return new Promise(
-        function(resolve) {
+    return new Promise(function (resolve) {
 
-            function finished() {
+        function finished() {
 
-                video.removeEventListener(
-                    "seeked",
-                    finished
-                );
-
-                resolve();
-            }
-
-            video.addEventListener(
+            video.removeEventListener(
                 "seeked",
                 finished
             );
 
-            video.currentTime =
-                Math.min(
-                    time,
-                    video.duration - 0.01
-                );
+            resolve();
         }
-    );
+
+        video.addEventListener(
+            "seeked",
+            finished
+        );
+
+        video.currentTime =
+            Math.min(
+                time,
+                Math.max(
+                    0,
+                    video.duration - 0.01
+                )
+            );
+    });
 }
 
 
@@ -516,10 +560,11 @@ function seekTo(time) {
 function waitForVideo() {
 
     return new Promise(
-        function(resolve, reject) {
+        function (resolve, reject) {
 
             if (
-                video.readyState >= 2
+                video.readyState >= 2 &&
+                video.duration
             ) {
 
                 resolve();
@@ -528,11 +573,6 @@ function waitForVideo() {
 
             function loaded() {
 
-                video.removeEventListener(
-                    "loadeddata",
-                    loaded
-                );
-
                 resolve();
             }
 
@@ -540,7 +580,7 @@ function waitForVideo() {
 
                 reject(
                     new Error(
-                        "The video could not be decoded."
+                        "Video could not be loaded."
                     )
                 );
             }
@@ -567,26 +607,24 @@ function waitForVideo() {
 
 function waitForSeek() {
 
-    return new Promise(
-        function(resolve) {
+    return new Promise(function (resolve) {
 
-            if (
-                Math.abs(
-                    video.currentTime
-                ) < 0.05
-            ) {
+        if (
+            Math.abs(
+                video.currentTime
+            ) < 0.05
+        ) {
 
-                resolve();
-                return;
-            }
-
-            video.addEventListener(
-                "seeked",
-                resolve,
-                { once: true }
-            );
+            resolve();
+            return;
         }
-    );
+
+        video.addEventListener(
+            "seeked",
+            resolve,
+            { once: true }
+        );
+    });
 }
 
 

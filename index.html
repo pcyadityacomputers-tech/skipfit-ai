@@ -1,153 +1,259 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="UTF-8">
 
-  <title>SkipFit AI - Aditya Kumar Yadav</title>
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
 
-  <link rel="stylesheet" href="style.css">
+    <title>SkipFit AI</title>
 
-  <!-- TensorFlow.js -->
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <link rel="stylesheet" href="style.css">
 
-  <!-- MoveNet -->
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection"></script>
+    <!-- MediaPipe Tasks Vision -->
+    <script
+        type="module"
+        src="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22-rc.20250304/vision_bundle.js">
+    </script>
 </head>
 
 <body>
 
 <header>
-  <h1>⚡ SkipFit AI</h1>
-  <p class="creator">By Aditya Kumar Yadav</p>
-  <p class="tagline">Train • Count • Improve</p>
-  <span class="version">AI MOVEMENT TRACKING V2</span>
+
+    <h1>⚡ SkipFit AI</h1>
+
+    <p class="creator">
+        By Aditya Kumar Yadav
+    </p>
+
+    <p class="tagline">
+        Train • Count • Improve
+    </p>
+
+    <span class="version">
+        ADVANCED BODY TRACKING V5
+    </span>
+
 </header>
+
 
 <main>
 
-<section class="card">
-  <h2>📅 Today's Tasks</h2>
 
-  <div class="task">
-    <span>🪢 Skipping</span>
-    <strong id="skipTask">0 / 1000</strong>
-  </div>
-
-  <div class="progress">
-    <div id="skipProgress"></div>
-  </div>
-
-  <div class="task">
-    <span>💪 Push-ups</span>
-    <strong id="pushTask">0 / 50</strong>
-  </div>
-
-  <div class="progress">
-    <div id="pushProgress"></div>
-  </div>
-</section>
-
+<!-- ================================= -->
+<!-- TODAY'S TASKS -->
+<!-- ================================= -->
 
 <section class="card">
-  <h2>🪢 AI Skipping Counter</h2>
 
-  <div class="counter" id="skipCount">0</div>
+    <h2>📅 Today's Tasks</h2>
 
-  <p class="small">
-    Maximum display: 10,000+
-  </p>
+    <div class="task">
 
-  <input
-    type="file"
-    id="skipVideo"
-    accept="video/*"
-  >
+        <span>🪢 Skipping</span>
 
-  <button id="analyzeSkipBtn" onclick="analyzeSkipping()">
-  🧠 Analyze Skipping Video
-</button>
+        <strong id="skipTask">
+            0 / 1000
+        </strong>
 
-  <p id="skipStatus">
-    Upload a full-body skipping video.
-  </p>
-
-  <video
-    id="skipVideoPreview"
-    controls
-    playsinline
-  ></video>
-</section>
-
-
-<section class="card">
-  <h2>💪 AI Push-up Counter</h2>
-
-  <div class="counter" id="pushCount">0</div>
-
-  <input
-    type="file"
-    id="pushVideo"
-    accept="video/*"
-  >
-
-  <button onclick="analyzePushups()">
-    🧠 Analyze Push-up Video
-  </button>
-
-  <p id="pushStatus">
-    Upload a video with your complete body visible.
-  </p>
-
-  <video
-    id="pushVideoPreview"
-    controls
-    playsinline
-  ></video>
-</section>
-
-
-<section class="card">
-  <h2>📊 My Progress</h2>
-
-  <div class="stats">
-
-    <div>
-      <span>Total Skips</span>
-      <strong id="totalSkips">0</strong>
     </div>
 
-    <div>
-      <span>Total Push-ups</span>
-      <strong id="totalPushups">0</strong>
+    <div class="progress">
+
+        <div id="skipProgress"></div>
+
     </div>
 
-  </div>
 </section>
 
+
+<!-- ================================= -->
+<!-- CAMERA -->
+<!-- ================================= -->
+
+<section class="card">
+
+    <h2>📷 AI Camera</h2>
+
+    <div class="cameraBox">
+
+        <video
+            id="camera"
+            autoplay
+            muted
+            playsinline
+        ></video>
+
+        <canvas
+            id="poseCanvas"
+        ></canvas>
+
+    </div>
+
+
+    <div class="cameraButtons">
+
+        <button
+            id="cameraBtn"
+            onclick="openCamera()"
+        >
+            📷 Open Camera
+        </button>
+
+
+        <button
+            id="recordBtn"
+            onclick="toggleRecording()"
+            disabled
+        >
+            🔴 Start Recording
+        </button>
+
+    </div>
+
+
+    <div
+        id="liveCount"
+        class="liveCounter"
+    >
+        0
+    </div>
+
+
+    <p id="cameraStatus">
+        Camera is off.
+    </p>
+
+</section>
+
+
+<!-- ================================= -->
+<!-- RECORDED VIDEO -->
+<!-- ================================= -->
+
+<section class="card">
+
+    <h2>🎥 Recorded Workout</h2>
+
+    <video
+        id="recordedVideo"
+        controls
+        playsinline
+    ></video>
+
+    <p id="recordStatus">
+        Your recorded workout will appear here.
+    </p>
+
+</section>
+
+
+<!-- ================================= -->
+<!-- SKIP COUNT -->
+<!-- ================================= -->
+
+<section class="card">
+
+    <h2>🪢 Skip Counter</h2>
+
+    <div
+        id="skipCount"
+        class="counter"
+    >
+        0
+    </div>
+
+    <p class="small">
+        AI detected skips
+    </p>
+
+    <button
+        onclick="analyzeRecordedVideo()"
+    >
+        🧠 Analyze Recorded Video
+    </button>
+
+    <p id="analysisStatus">
+        Record a workout first.
+    </p>
+
+</section>
+
+
+<!-- ================================= -->
+<!-- PROGRESS -->
+<!-- ================================= -->
+
+<section class="card">
+
+    <h2>📊 My Progress</h2>
+
+    <div class="stats">
+
+        <div>
+
+            <span>
+                Total Skips
+            </span>
+
+            <strong id="totalSkips">
+                0
+            </strong>
+
+        </div>
+
+    </div>
+
+</section>
+
+
+<!-- ================================= -->
+<!-- TIPS -->
+<!-- ================================= -->
 
 <section class="card tips">
-  <h2>🎯 Best Recording Setup</h2>
 
-  <p>✓ Keep the phone stable.</p>
-  <p>✓ Keep your complete body visible.</p>
-  <p>✓ Use good lighting.</p>
-  <p>✓ Stand far enough from the camera.</p>
-  <p>✓ Record from the side for push-ups.</p>
-  <p>✓ Avoid people crossing in front of you.</p>
+    <h2>🎯 Best AI Setup</h2>
+
+    <p>✓ Keep the phone stable.</p>
+
+    <p>✓ Keep your complete body visible.</p>
+
+    <p>✓ Use good lighting.</p>
+
+    <p>✓ Keep some space above your head.</p>
+
+    <p>✓ Keep both feet visible.</p>
+
+    <p>✓ Don't let another person cross the camera.</p>
+
 </section>
+
 
 </main>
 
 
 <footer>
-  <p>⚡ SkipFit AI</p>
-  <p>Created by Aditya Kumar Yadav</p>
-  <small>AI movement tracking • V2</small>
+
+    <p>⚡ SkipFit AI</p>
+
+    <p>
+        Created by Aditya Kumar Yadav
+    </p>
+
+    <small>
+        Advanced AI movement tracking
+    </small>
+
 </footer>
 
 
 <script src="script.js"></script>
 
 </body>
+
 </html>

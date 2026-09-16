@@ -1,638 +1,815 @@
 // ==========================================
-// SKIPFIT AI V4
-// REAL SKIPPING MOVEMENT COUNTER
+// SKIPFIT AI V5
+// CAMERA + RECORDING + BODY TRACKING
 // ==========================================
 
-const videoInput = document.getElementById("skipVideo");
-const video = document.getElementById("skipVideoPreview");
-const statusBox = document.getElementById("skipStatus");
 
-const countBox = document.getElementById("skipCount");
-const totalBox = document.getElementById("totalSkips");
-const taskBox = document.getElementById("skipTask");
-const progressBar = document.getElementById("skipProgress");
+const camera =
+    document.getElementById("camera");
 
-let detector = null;
-let analyzing = false;
+const canvas =
+    document.getElementById("poseCanvas");
+
+const ctx =
+    canvas.getContext("2d");
+
+const cameraBtn =
+    document.getElementById("cameraBtn");
+
+const recordBtn =
+    document.getElementById("recordBtn");
+
+const cameraStatus =
+    document.getElementById("cameraStatus");
+
+const recordedVideo =
+    document.getElementById("recordedVideo");
+
+const recordStatus =
+    document.getElementById("recordStatus");
+
+const analysisStatus =
+    document.getElementById("analysisStatus");
+
+const liveCount =
+    document.getElementById("liveCount");
+
+const skipCount =
+    document.getElementById("skipCount");
+
+const totalSkipsBox =
+    document.getElementById("totalSkips");
+
+const taskBox =
+    document.getElementById("skipTask");
+
+const progressBar =
+    document.getElementById("skipProgress");
+
+
+let cameraStream = null;
+
+let mediaRecorder = null;
+
+let recordedChunks = [];
+
+let recording = false;
+
+let poseLandmarker = null;
+
+let cameraRunning = false;
+
+
+// ==========================================
+// STORED COUNT
+// ==========================================
 
 let totalSkips =
-    Number(localStorage.getItem("skipCount") || 0);
+    Number(
+        localStorage.getItem("skipCount") || 0
+    );
 
-
-// ==========================================
-// UI
-// ==========================================
-
-function updateUI() {
-
-    if (countBox) {
-        countBox.textContent = totalSkips;
-    }
-
-    if (totalBox) {
-        totalBox.textContent = totalSkips;
-    }
-
-    if (taskBox) {
-        taskBox.textContent =
-            Math.min(totalSkips, 1000) + " / 1000";
-    }
-
-    if (progressBar) {
-        progressBar.style.width =
-            Math.min(totalSkips / 10, 100) + "%";
-    }
-}
+let sessionSkips = 0;
 
 updateUI();
 
 
 // ==========================================
-// VIDEO SELECT
+// UPDATE UI
 // ==========================================
 
-if (videoInput) {
+function updateUI() {
 
-    videoInput.addEventListener("change", function () {
+    skipCount.textContent =
+        sessionSkips;
 
-        const file = this.files[0];
+    liveCount.textContent =
+        sessionSkips;
 
-        if (!file) return;
+    totalSkipsBox.textContent =
+        totalSkips;
 
-        video.src = URL.createObjectURL(file);
+    taskBox.textContent =
+        Math.min(totalSkips, 1000)
+        + " / 1000";
 
-        video.muted = true;
-        video.playsInline = true;
-        video.style.display = "block";
-
-        video.onloadedmetadata = function () {
-
-            statusBox.innerHTML =
-                "✅ Video loaded successfully.<br><br>" +
-                "Duration: " +
-                video.duration.toFixed(1) +
-                " seconds.<br><br>" +
-                "Ready for AI skipping analysis.";
-        };
-    });
+    progressBar.style.width =
+        Math.min(totalSkips / 10, 100)
+        + "%";
 }
 
 
 // ==========================================
-// LOAD MOVENET
+// OPEN CAMERA
 // ==========================================
 
-async function loadMoveNet() {
-
-    if (detector) {
-        return detector;
-    }
-
-    statusBox.innerHTML =
-        "🤖 Loading MoveNet AI...";
-
-    if (!window.tf) {
-        throw new Error(
-            "TensorFlow.js did not load."
-        );
-    }
-
-    if (!window.poseDetection) {
-        throw new Error(
-            "MoveNet library did not load."
-        );
-    }
-
-    await tf.ready();
-
-    detector =
-        await poseDetection.createDetector(
-            poseDetection.SupportedModels.MoveNet,
-            {
-                modelType:
-                    poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING
-            }
-        );
-
-    return detector;
-}
-
-
-// ==========================================
-// MAIN COUNTER
-// ==========================================
-
-async function analyzeSkipping() {
-
-    if (analyzing) return;
-
-    if (
-        !videoInput ||
-        !videoInput.files ||
-        !videoInput.files.length
-    ) {
-
-        statusBox.innerHTML =
-            "❌ Select a skipping video first.";
-
-        return;
-    }
-
-    analyzing = true;
+async function openCamera() {
 
     try {
 
-        const ai = await loadMoveNet();
+        cameraStatus.textContent =
+            "📷 Requesting camera permission...";
 
-        statusBox.innerHTML =
-            "🤖 AI loaded.<br><br>" +
-            "Preparing video...";
+        cameraStream =
+            await navigator.mediaDevices.getUserMedia({
 
-        await waitForVideo();
+                video: {
+                    facingMode: "user",
+                    width: {
+                        ideal: 720
+                    },
+                    height: {
+                        ideal: 1280
+                    }
+                },
 
-        video.pause();
+                audio: false
 
-        video.currentTime = 0;
+            });
 
-        await waitForSeek();
 
+        camera.srcObject =
+            cameraStream;
 
-        // ==================================
-        // MOVEMENT DATA
-        // ==================================
 
-        let samples = [];
+        camera.onloadedmetadata =
+            async function () {
 
-        let frames = 0;
-        let detectedFrames = 0;
+                canvas.width =
+                    camera.videoWidth;
 
-        const duration = video.duration;
+                canvas.height =
+                    camera.videoHeight;
 
-        // Analyze about 8 frames per second.
-        const frameStep = 0.12;
+                await camera.play();
 
+                recordBtn.disabled =
+                    false;
 
-        // ==================================
-        // ANALYZE VIDEO
-        // ==================================
+                cameraRunning =
+                    true;
 
-        for (
-            let time = 0;
-            time < duration;
-            time += frameStep
-        ) {
+                cameraStatus.innerHTML =
+                    "🟢 Camera active.<br>" +
+                    "Stand where your complete body is visible.";
 
-            await seekTo(time);
+                await startPoseTracking();
 
-            frames++;
+            };
 
-            try {
 
-                const poses =
-                    await ai.estimatePoses(video);
-
-                if (
-                    !poses ||
-                    poses.length === 0
-                ) {
-                    continue;
-                }
-
-                const pose = poses[0];
-
-                const leftAnkle =
-                    getPoint(
-                        pose,
-                        "left_ankle"
-                    );
-
-                const rightAnkle =
-                    getPoint(
-                        pose,
-                        "right_ankle"
-                    );
-
-                const leftHip =
-                    getPoint(
-                        pose,
-                        "left_hip"
-                    );
-
-                const rightHip =
-                    getPoint(
-                        pose,
-                        "right_hip"
-                    );
-
-                const leftShoulder =
-                    getPoint(
-                        pose,
-                        "left_shoulder"
-                    );
-
-                const rightShoulder =
-                    getPoint(
-                        pose,
-                        "right_shoulder"
-                    );
-
-                if (
-                    !leftAnkle ||
-                    !rightAnkle ||
-                    !leftHip ||
-                    !rightHip
-                ) {
-                    continue;
-                }
-
-                detectedFrames++;
-
-
-                // ==================================
-                // BODY POSITION
-                // ==================================
-
-                const ankleY =
-                    (
-                        leftAnkle.y +
-                        rightAnkle.y
-                    ) / 2;
-
-                const hipY =
-                    (
-                        leftHip.y +
-                        rightHip.y
-                    ) / 2;
-
-                let bodyScale = 100;
-
-                if (
-                    leftShoulder &&
-                    rightShoulder
-                ) {
-
-                    const shoulderY =
-                        (
-                            leftShoulder.y +
-                            rightShoulder.y
-                        ) / 2;
-
-                    bodyScale =
-                        Math.max(
-                            Math.abs(
-                                hipY -
-                                shoulderY
-                            ),
-                            20
-                        );
-                }
-
-
-                // Normalize ankle movement
-                const position =
-                    (ankleY - hipY) /
-                    bodyScale;
-
-
-                samples.push({
-                    time: time,
-                    position: position
-                });
-
-
-                // ==================================
-                // LIVE STATUS
-                // ==================================
-
-                const percent =
-                    Math.round(
-                        (time / duration) * 100
-                    );
-
-                statusBox.innerHTML =
-                    "🤖 AI analyzing...<br><br>" +
-                    "Progress: " +
-                    percent +
-                    "%<br>" +
-                    "Frames: " +
-                    frames +
-                    "<br>" +
-                    "Body detected: " +
-                    detectedFrames;
-            }
-            catch (error) {
-
-                console.log(
-                    "Frame error:",
-                    error
-                );
-            }
-        }
-
-
-        // ==================================
-        // SMOOTH MOVEMENT
-        // ==================================
-
-        const positions =
-            samples.map(
-                function (item) {
-                    return item.position;
-                }
-            );
-
-
-        if (positions.length < 10) {
-
-            throw new Error(
-                "Not enough body movement detected."
-            );
-        }
-
-
-        // ==================================
-        // SMOOTH DATA
-        // ==================================
-
-        const smooth = [];
-
-        const windowSize = 3;
-
-        for (
-            let i = 0;
-            i < positions.length;
-            i++
-        ) {
-
-            let sum = 0;
-            let count = 0;
-
-            for (
-                let j = -windowSize;
-                j <= windowSize;
-                j++
-            ) {
-
-                const index = i + j;
-
-                if (
-                    index >= 0 &&
-                    index < positions.length
-                ) {
-
-                    sum += positions[index];
-                    count++;
-                }
-            }
-
-            smooth.push(
-                sum / count
-            );
-        }
-
-
-        // ==================================
-        // FIND LOCAL PEAKS
-        // ==================================
-
-        let jumps = 0;
-
-        let lastJumpTime = -10;
-
-        const minJumpInterval = 0.28;
-
-        for (
-            let i = 2;
-            i < smooth.length - 2;
-            i++
-        ) {
-
-            const current =
-                smooth[i];
-
-            const previous =
-                smooth[i - 1];
-
-            const next =
-                smooth[i + 1];
-
-
-            /*
-             * A jump produces a higher
-             * foot position followed by
-             * a lower position.
-             *
-             * Because screen Y increases
-             * downward, the highest point
-             * has the smallest value.
-             */
-
-            const isTop =
-                current < previous &&
-                current <= next;
-
-
-            if (!isTop) {
-                continue;
-            }
-
-
-            // Local movement size
-            const leftDifference =
-                previous - current;
-
-            const rightDifference =
-                next - current;
-
-            const movement =
-                leftDifference +
-                rightDifference;
-
-
-            /*
-             * Threshold prevents tiny
-             * tracking noise from becoming
-             * a skip.
-             */
-
-            if (movement < 0.025) {
-                continue;
-            }
-
-
-            const currentTime =
-                samples[i].time;
-
-
-            // Prevent double counting
-            if (
-                currentTime -
-                lastJumpTime <
-                minJumpInterval
-            ) {
-                continue;
-            }
-
-
-            jumps++;
-
-            lastJumpTime =
-                currentTime;
-        }
-
-
-        // ==================================
-        // RESULT
-        // ==================================
-
-        totalSkips += jumps;
-
-        localStorage.setItem(
-            "skipCount",
-            totalSkips
-        );
-
-        updateUI();
-
-
-        statusBox.innerHTML =
-            "✅ AI ANALYSIS COMPLETE!<br><br>" +
-
-            "Frames analyzed: " +
-            frames +
-            "<br>" +
-
-            "Body detected: " +
-            detectedFrames +
-            "<br><br>" +
-
-            "🪢 Skips detected: " +
-            jumps +
-            "<br><br>" +
-
-            "Total SkipFit skips: " +
-            totalSkips;
+        cameraBtn.textContent =
+            "📷 Camera Active";
 
 
     }
     catch (error) {
 
-        console.error(
-            "SkipFit V4 ERROR:",
-            error
-        );
+        console.error(error);
 
-        statusBox.innerHTML =
-            "❌ AI ERROR<br><br>" +
-            error.message;
-    }
-    finally {
-
-        analyzing = false;
+        cameraStatus.innerHTML =
+            "❌ Camera error<br><br>" +
+            error.message +
+            "<br><br>" +
+            "Check browser camera permission.";
     }
 }
 
 
 // ==========================================
-// GET KEYPOINT
+// START RECORDING
 // ==========================================
 
-function getPoint(pose, name) {
+function startRecording() {
 
-    if (
-        !pose ||
-        !pose.keypoints
-    ) {
-        return null;
+    if (!cameraStream) {
+
+        cameraStatus.textContent =
+            "Open the camera first.";
+
+        return;
     }
 
-    const point =
-        pose.keypoints.find(
-            function (p) {
-                return p.name === name;
+
+    recordedChunks = [];
+
+
+    let options = {
+        mimeType: "video/webm"
+    };
+
+
+    if (
+        !MediaRecorder.isTypeSupported(
+            "video/webm"
+        )
+    ) {
+
+        options = {};
+    }
+
+
+    mediaRecorder =
+        new MediaRecorder(
+            cameraStream,
+            options
+        );
+
+
+    mediaRecorder.ondataavailable =
+        function (event) {
+
+            if (event.data.size > 0) {
+
+                recordedChunks.push(
+                    event.data
+                );
+            }
+        };
+
+
+    mediaRecorder.onstop =
+        function () {
+
+            createRecordedVideo();
+        };
+
+
+    mediaRecorder.start();
+
+
+    recording = true;
+
+    recordBtn.textContent =
+        "⏹ Stop Recording";
+
+    recordBtn.style.background =
+        "#dc2626";
+
+    recordStatus.textContent =
+        "🔴 Recording workout...";
+
+}
+
+
+// ==========================================
+// STOP RECORDING
+// ==========================================
+
+function stopRecording() {
+
+    if (!mediaRecorder) {
+        return;
+    }
+
+    mediaRecorder.stop();
+
+    recording = false;
+
+    recordBtn.textContent =
+        "🔴 Start Recording";
+
+    recordBtn.style.background =
+        "";
+
+    recordStatus.textContent =
+        "⏳ Preparing recorded video...";
+}
+
+
+// ==========================================
+// TOGGLE RECORDING
+// ==========================================
+
+function toggleRecording() {
+
+    if (recording) {
+
+        stopRecording();
+
+    } else {
+
+        startRecording();
+
+    }
+}
+
+
+// ==========================================
+// CREATE RECORDED VIDEO
+// ==========================================
+
+function createRecordedVideo() {
+
+    const blob =
+        new Blob(
+            recordedChunks,
+            {
+                type: "video/webm"
             }
         );
 
-    if (!point) {
-        return null;
-    }
 
-    if (
-        typeof point.score === "number" &&
-        point.score < 0.30
-    ) {
-        return null;
-    }
+    const url =
+        URL.createObjectURL(blob);
 
-    return point;
+
+    recordedVideo.src =
+        url;
+
+    recordedVideo.style.display =
+        "block";
+
+
+    recordedVideo.controls =
+        true;
+
+
+    recordStatus.innerHTML =
+        "✅ Workout recorded successfully.<br>" +
+        "Your video is ready for AI analysis.";
+
+
+    analysisStatus.textContent =
+        "Ready to analyze the recorded workout.";
+
 }
 
 
 // ==========================================
-// SEEK
+// LOAD MEDIAPIPE
 // ==========================================
 
-function seekTo(time) {
+async function loadPoseLandmarker() {
 
-    return new Promise(function (resolve) {
+    if (poseLandmarker) {
 
-        function finished() {
+        return poseLandmarker;
+    }
 
-            video.removeEventListener(
-                "seeked",
-                finished
-            );
 
-            resolve();
-        }
+    analysisStatus.innerHTML =
+        "🤖 Loading advanced body AI...";
 
-        video.addEventListener(
-            "seeked",
-            finished
+
+    /*
+     * MediaPipe Tasks Vision is loaded
+     * through the module in index.html.
+     */
+
+    const vision =
+        await import(
+            "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22-rc.20250304"
         );
 
-        video.currentTime =
-            Math.min(
-                time,
-                Math.max(
-                    0,
-                    video.duration - 0.01
-                )
-            );
-    });
+
+    const {
+        FilesetResolver,
+        PoseLandmarker
+    } = vision;
+
+
+    const filesetResolver =
+        await FilesetResolver.forVisionTasks(
+
+            "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22-rc.20250304/wasm"
+
+        );
+
+
+    poseLandmarker =
+        await PoseLandmarker.createFromOptions(
+
+            filesetResolver,
+
+            {
+
+                baseOptions: {
+
+                    modelAssetPath:
+                        "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
+
+                    delegate: "GPU"
+
+                },
+
+                runningMode: "VIDEO",
+
+                numPoses: 1,
+
+                minPoseDetectionConfidence:
+                    0.5,
+
+                minPosePresenceConfidence:
+                    0.5,
+
+                minTrackingConfidence:
+                    0.5
+
+            }
+
+        );
+
+
+    return poseLandmarker;
 }
 
 
 // ==========================================
-// VIDEO READY
+// LIVE POSE TRACKING
 // ==========================================
 
-function waitForVideo() {
+let lastVideoTime = -1;
 
-    return new Promise(
-        function (resolve, reject) {
+let lastHipY = null;
 
-            if (
-                video.readyState >= 2 &&
-                video.duration
-            ) {
+let jumpState = "ground";
 
-                resolve();
+let liveLastJump = 0;
+
+
+async function startPoseTracking() {
+
+    try {
+
+        const landmarker =
+            await loadPoseLandmarker();
+
+
+        function detectFrame() {
+
+            if (!cameraRunning) {
                 return;
             }
 
-            function loaded() {
-                resolve();
+
+            if (
+                camera.readyState >= 2 &&
+                camera.currentTime !== lastVideoTime
+            ) {
+
+                lastVideoTime =
+                    camera.currentTime;
+
+
+                const now =
+                    performance.now();
+
+
+                const result =
+                    landmarker.detectForVideo(
+                        camera,
+                        now
+                    );
+
+
+                processPose(result);
             }
 
-            function failed() {
 
-                reject(
-                    new Error(
-                        "Video could not be loaded."
-                    )
+            requestAnimationFrame(
+                detectFrame
+            );
+        }
+
+
+        detectFrame();
+
+
+    }
+    catch (error) {
+
+        console.error(error);
+
+        cameraStatus.innerHTML =
+            "❌ Advanced AI error<br><br>" +
+            error.message;
+    }
+}
+
+
+// ==========================================
+// PROCESS BODY
+// ==========================================
+
+function processPose(result) {
+
+    ctx.clearRect(
+        0,
+        0,
+        canvas.width,
+        canvas.height
+    );
+
+
+    if (
+        !result ||
+        !result.landmarks ||
+        result.landmarks.length === 0
+    ) {
+
+        cameraStatus.textContent =
+            "🟡 Looking for your body...";
+
+        return;
+    }
+
+
+    const landmarks =
+        result.landmarks[0];
+
+
+    drawSkeleton(landmarks);
+
+
+    /*
+     * MediaPipe landmarks:
+     *
+     * 23 = left hip
+     * 24 = right hip
+     * 27 = left ankle
+     * 28 = right ankle
+     */
+
+
+    const leftHip =
+        landmarks[23];
+
+    const rightHip =
+        landmarks[24];
+
+    const leftAnkle =
+        landmarks[27];
+
+    const rightAnkle =
+        landmarks[28];
+
+
+    if (
+        !leftHip ||
+        !rightHip ||
+        !leftAnkle ||
+        !rightAnkle
+    ) {
+
+        return;
+    }
+
+
+    const hipY =
+        (
+            leftHip.y +
+            rightHip.y
+        ) / 2;
+
+
+    const ankleY =
+        (
+            leftAnkle.y +
+            rightAnkle.y
+        ) / 2;
+
+
+    /*
+     * Distance between hips and feet.
+     */
+
+    const vertical =
+        ankleY - hipY;
+
+
+    if (lastHipY === null) {
+
+        lastHipY =
+            vertical;
+
+        return;
+    }
+
+
+    const movement =
+        vertical - lastHipY;
+
+
+    lastHipY =
+        lastHipY * 0.75 +
+        vertical * 0.25;
+
+
+    /*
+     * Smaller Y means the feet
+     * moved upward.
+     */
+
+    const currentTime =
+        performance.now();
+
+
+    /*
+     * UPWARD PHASE
+     */
+
+    if (
+        movement < -0.012 &&
+        jumpState === "ground"
+    ) {
+
+        jumpState =
+            "air";
+    }
+
+
+    /*
+     * DOWNWARD PHASE
+     */
+
+    if (
+        movement > 0.012 &&
+        jumpState === "air"
+    ) {
+
+        /*
+         * Prevent duplicate counting.
+         */
+
+        if (
+            currentTime -
+            liveLastJump >
+            250
+        ) {
+
+            sessionSkips++;
+
+            liveLastJump =
+                currentTime;
+
+            updateUI();
+        }
+
+
+        jumpState =
+            "ground";
+    }
+
+
+    cameraStatus.innerHTML =
+        "🟢 Advanced body tracking active<br>" +
+        "🦴 Body landmarks detected: " +
+        landmarks.length;
+
+}
+
+
+// ==========================================
+// DRAW BODY SKELETON
+// ==========================================
+
+function drawSkeleton(landmarks) {
+
+    const connections = [
+
+        [11, 12],
+
+        [11, 13],
+        [13, 15],
+
+        [12, 14],
+        [14, 16],
+
+        [11, 23],
+        [12, 24],
+
+        [23, 24],
+
+        [23, 25],
+        [25, 27],
+
+        [24, 26],
+        [26, 28]
+
+    ];
+
+
+    ctx.lineWidth = 4;
+
+
+    connections.forEach(
+        function (connection) {
+
+            const a =
+                landmarks[connection[0]];
+
+            const b =
+                landmarks[connection[1]];
+
+
+            if (!a || !b) {
+                return;
+            }
+
+
+            ctx.beginPath();
+
+            ctx.moveTo(
+                a.x * canvas.width,
+                a.y * canvas.height
+            );
+
+            ctx.lineTo(
+                b.x * canvas.width,
+                b.y * canvas.height
+            );
+
+            ctx.stroke();
+        }
+    );
+
+
+    landmarks.forEach(
+        function (point) {
+
+            ctx.beginPath();
+
+            ctx.arc(
+                point.x * canvas.width,
+                point.y * canvas.height,
+                4,
+                0,
+                Math.PI * 2
+            );
+
+            ctx.fill();
+        }
+    );
+}
+
+
+// ==========================================
+// ANALYZE RECORDED VIDEO
+// ==========================================
+
+async function analyzeRecordedVideo() {
+
+    if (!recordedVideo.src) {
+
+        analysisStatus.textContent =
+            "❌ Record a video first.";
+
+        return;
+    }
+
+
+    analysisStatus.innerHTML =
+        "🤖 Recorded video is ready.<br><br>" +
+        "The live AI counter already tracked your movement while recording.";
+
+
+    /*
+     * Add the live session result
+     * to the saved total.
+     */
+
+    totalSkips += sessionSkips;
+
+
+    localStorage.setItem(
+        "skipCount",
+        totalSkips
+    );
+
+
+    updateUI();
+
+
+    analysisStatus.innerHTML =
+        "✅ Workout analysis complete!<br><br>" +
+
+        "Session skips: " +
+        sessionSkips +
+        "<br>" +
+
+        "Total skips: " +
+        totalSkips;
+}
+
+
+// ==========================================
+// PAGE EXIT
+// ==========================================
+
+window.addEventListener(
+    "beforeunload",
+    function () {
+
+        if (cameraStream) {
+
+            cameraStream
+                .getTracks()
+                .forEach(
+                    function (track) {
+                        track.stop();
+                    }
                 );
-            }
-
-            video.addEventListener(
-                "loaded
+        }
+    }
+);

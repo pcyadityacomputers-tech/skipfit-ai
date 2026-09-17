@@ -2,196 +2,227 @@
   box-sizing:border-box;
 }
 
+html{
+  width:100%;
+  min-height:100%;
+}
+
 body{
   margin:0;
+  min-height:100vh;
   background:#07111f;
-  color:white;
+  color:#fff;
   font-family:Arial,sans-serif;
 }
 
 header{
   text-align:center;
-  padding:22px 15px;
+  padding:20px 12px;
   background:#0c1b2d;
   border-bottom:1px solid #20354d;
 }
 
 header h1{
   margin:0;
-  font-size:34px;
+  font-size:32px;
 }
 
 header p{
   margin:7px 0;
-  color:#9eb4cc;
+  color:#a9bdd1;
 }
 
 header small{
-  color:#5db3ff;
+  color:#62b7ff;
   font-weight:bold;
 }
 
 main{
-  max-width:700px;
+  width:100%;
+  max-width:720px;
   margin:auto;
-  padding:15px;
+  padding:14px;
 }
 
-.camera-card{
+.card{
   background:#101f32;
   border-radius:20px;
-  padding:15px;
-  text-align:center;
+  padding:14px;
 }
 
-.status{
+#status{
   padding:12px;
-  color:#b8c9da;
+  margin-bottom:12px;
+  border-radius:11px;
+  background:#172b40;
+  text-align:center;
   font-weight:bold;
+  font-size:14px;
 }
 
-.camera-wrap{
+.videoBox{
   position:relative;
   width:100%;
+  aspect-ratio:3 / 4;
+  max-height:75vh;
   background:#000;
   border-radius:16px;
   overflow:hidden;
 }
 
-#camera{
-  display:block;
+#camera,
+#videoFilePlayer{
+  position:absolute;
+  inset:0;
   width:100%;
-  aspect-ratio:3/4;
+  height:100%;
   object-fit:cover;
-  transform:scaleX(-1);
 }
 
-#overlay{
+#camera{
+  display:none;
+}
+
+#videoFilePlayer{
+  display:none;
+}
+
+#canvas{
   position:absolute;
   inset:0;
   width:100%;
   height:100%;
   pointer-events:none;
-  transform:scaleX(-1);
 }
 
-.detection{
+.info{
   display:grid;
   grid-template-columns:repeat(3,1fr);
   gap:7px;
   margin-top:12px;
 }
 
-.detection span{
-  background:#182b40;
+.info div{
+  padding:10px 3px;
   border-radius:10px;
-  padding:10px 4px;
-  font-size:12px;
+  background:#182c42;
+  text-align:center;
+  font-size:11px;
   font-weight:bold;
 }
 
-.stage{
-  margin:15px 0 8px;
-  padding:14px;
-  border-radius:12px;
+#stage{
+  margin-top:12px;
+  padding:13px;
+  border-radius:11px;
   background:#172c43;
-  color:#72c2ff;
+  text-align:center;
+  color:#7bc6ff;
   font-weight:bold;
 }
 
-.calibration{
-  background:#0b1726;
-  padding:14px;
-  border-radius:14px;
-}
-
-.cal-title{
-  font-size:12px;
-  color:#91a8bd;
-}
-
-.cal-number{
-  font-size:27px;
-  font-weight:bold;
-  margin:5px;
-}
-
-.bar{
-  height:8px;
-  background:#25384c;
-  border-radius:10px;
-  overflow:hidden;
-}
-
-#barFill{
-  height:100%;
-  width:0%;
-  background:#39a8ff;
-  transition:.2s;
-}
-
-.count-title{
-  margin-top:20px;
-  color:#9eb4cc;
+.title{
+  margin-top:18px;
+  text-align:center;
+  color:#9db2c7;
   font-weight:bold;
 }
 
-.count{
-  font-size:80px;
+#count{
+  margin:4px 0 18px;
+  text-align:center;
+  font-size:76px;
   line-height:1;
   font-weight:900;
-  margin:5px 0 20px;
 }
 
-button{
+.buttons{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:9px;
+}
+
+button,
+.fileButton{
   width:100%;
+  min-height:50px;
   border:0;
-  border-radius:13px;
-  padding:15px;
-  margin:5px 0;
-  background:#1677ff;
-  color:white;
-  font-size:16px;
+  border-radius:12px;
+  padding:13px 8px;
+  background:#263b51;
+  color:#fff;
+  font-size:14px;
   font-weight:bold;
+  text-align:center;
+  cursor:pointer;
+}
+
+.primary{
+  background:#147cff;
+}
+
+.danger{
+  background:#9b3838;
 }
 
 button:disabled{
   opacity:.4;
+  cursor:not-allowed;
 }
 
-#stopBtn{
-  background:#27394d;
+input{
+  display:none;
 }
 
-.instructions{
-  text-align:left;
-  margin-top:18px;
-  padding:15px;
+#progress{
+  display:block;
+  width:100%;
+  height:8px;
+  margin-top:14px;
+}
+
+.help{
+  margin-top:14px;
+  padding:13px;
+  border-radius:12px;
   background:#0b1726;
-  border-radius:13px;
-  color:#a9bbcd;
-  font-size:14px;
+  color:#aebfd0;
+  font-size:13px;
+  line-height:1.55;
 }
 
-.instructions b{
-  color:white;
+.help b{
+  color:#fff;
 }
 
-.instructions p{
-  margin:8px 0;
-}
+@media(max-width:500px){
 
-@media(max-width:450px){
+  main{
+    padding:9px;
+  }
+
+  .card{
+    padding:11px;
+  }
 
   header h1{
     font-size:29px;
   }
 
-  .count{
+  #count{
     font-size:68px;
   }
 
-  .detection span{
-    font-size:10px;
+  .buttons{
+    grid-template-columns:1fr;
   }
+
+}
+
+@media(min-width:700px){
+
+  .videoBox{
+    max-height:650px;
+  }
+
 }

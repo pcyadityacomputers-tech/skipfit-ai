@@ -4,9 +4,9 @@ import {
 } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/+esm";
 
 
-/* =========================
+/* =====================================================
    ELEMENTS
-========================= */
+===================================================== */
 
 const camera = document.getElementById("camera");
 const videoPlayer = document.getElementById("videoFilePlayer");
@@ -30,70 +30,119 @@ const videoState = document.getElementById("videoState");
 const aiState = document.getElementById("aiState");
 
 
-/* =========================
-   MAIN VARIABLES
-========================= */
-
-let stream = null;
-let facing = "user";
-
-let videoURL = null;
+/* =====================================================
+   AI
+===================================================== */
 
 let landmarker = null;
 let aiReady = false;
 
+
+/* =====================================================
+   CAMERA
+===================================================== */
+
+let stream = null;
+let facing = "user";
 let cameraRunning = false;
+
+
+/* =====================================================
+   VIDEO
+===================================================== */
+
+let videoURL = null;
 let analysing = false;
 
-let lastProcess = 0;
-let videoTimestamp = 0;
 
-
-/* =========================
-   SKIP COUNTER
-========================= */
+/* =====================================================
+   COUNTER
+===================================================== */
 
 let skipCount = 0;
 
 let calibrationFrames = 0;
-let calibrationSum = 0;
-let calibrationHipY = null;
+let calibrationHipY = 0;
+let calibrationAnkleY = 0;
+let calibrationKneeY = 0;
 
-let jumpState = "GROUND";
+let hipSamples = [];
+let ankleSamples = [];
 
-let lastSkipTime = 0;
+let state = "GROUND";
 
-const CALIBRATION_FRAMES = 30;
+let lastJumpTime = 0;
+let lastPeakTime = 0;
 
-const UP_THRESHOLD = 0.025;
-const DOWN_THRESHOLD = 0.012;
+let previousHipY = null;
+let previousAnkleY = null;
 
-const SKIP_COOLDOWN = 300;
+let upwardSpeed = 0;
+let downwardSpeed = 0;
+
+let jumpPeak = 0;
+
+let bodyScale = 0.2;
 
 
-/* =========================
-   RESET SKIP SYSTEM
-========================= */
+/* =====================================================
+   SETTINGS
+===================================================== */
 
-function resetSkipSystem() {
+const CALIBRATION_FRAMES = 45;
+
+/*
+   These values are deliberately smaller than
+   the old version so small jumps are detected.
+*/
+
+const MIN_UP_MOVEMENT = 0.012;
+const MIN_DOWN_MOVEMENT = 0.008;
+
+const MIN_JUMP_DISTANCE = 0.018;
+
+const MIN_TIME_BETWEEN_SKIPS = 180;
+
+
+/* =====================================================
+   RESET
+===================================================== */
+
+function resetCounter() {
 
   skipCount = 0;
 
   calibrationFrames = 0;
-  calibrationSum = 0;
-  calibrationHipY = null;
 
-  jumpState = "GROUND";
+  calibrationHipY = 0;
+  calibrationAnkleY = 0;
+  calibrationKneeY = 0;
 
-  lastSkipTime = 0;
+  hipSamples = [];
+  ankleSamples = [];
+
+  state = "GROUND";
+
+  lastJumpTime = 0;
+  lastPeakTime = 0;
+
+  previousHipY = null;
+  previousAnkleY = null;
+
+  upwardSpeed = 0;
+  downwardSpeed = 0;
+
+  jumpPeak = 0;
 
   count.textContent = "0";
+
+  progress.value = 0;
 }
 
 
-/* =========================
-   BODY DATA
-========================= */
+/* =====================================================
+   GET BODY DATA
+===================================================== */
 
 function getBodyData(landmarks) {
 
@@ -101,6 +150,7 @@ function getBodyData(landmarks) {
     return null;
   }
 
+  const nose = landmarks[0];
 
   const leftShoulder = landmarks[11];
   const rightShoulder = landmarks[12];
@@ -114,8 +164,7 @@ function getBodyData(landmarks) {
   const leftAnkle = landmarks[27];
   const rightAnkle = landmarks[28];
 
-
-  const points = [
+  const required = [
     leftShoulder,
     rightShoulder,
     leftHip,
@@ -126,16 +175,15 @@ function getBodyData(landmarks) {
     rightAnkle
   ];
 
+  for (const p of required) {
 
-  for (const point of points) {
-
-    if (!point) {
+    if (!p) {
       return null;
     }
 
     if (
-      point.visibility !== undefined &&
-      point.visibility < 0.20
+      p.visibility !== undefined &&
+      p.visibility < 0.15
     ) {
       return null;
     }
@@ -145,97 +193,173 @@ function getBodyData(landmarks) {
   const hipY =
     (leftHip.y + rightHip.y) / 2;
 
-
   const kneeY =
     (leftKnee.y + rightKnee.y) / 2;
 
-
   const ankleY =
     (leftAnkle.y + rightAnkle.y) / 2;
-
 
   const shoulderY =
     (leftShoulder.y + rightShoulder.y) / 2;
 
 
+  /*
+     Body scale makes the detector adaptive.
+
+     A tall person and a short person will
+     therefore not need exactly the same threshold.
+  */
+
+  const bodyHeight =
+    Math.abs(
+      ((leftShoulder.y + rightShoulder.y) / 2) -
+      ((leftAnkle.y + rightAnkle.y) / 2)
+    );
+
+
   return {
+    noseY: nose ? nose.y : hipY,
+
     hipY,
     kneeY,
     ankleY,
-    shoulderY
+    shoulderY,
+
+    bodyHeight
   };
 }
 
 
-/* =========================
+/* =====================================================
    CALIBRATION
-========================= */
+===================================================== */
 
 function calibrate(data) {
 
   if (!data) {
-    return false;
-  }
-
-
-  if (
-    calibrationFrames <
-    CALIBRATION_FRAMES
-  ) {
-
-    calibrationSum += data.hipY;
-
-    calibrationFrames++;
-
-
-    const percent =
-      Math.round(
-        calibrationFrames /
-        CALIBRATION_FRAMES *
-        100
-      );
-
-
-    stage.textContent =
-      "CALIBRATING " +
-      percent +
-      "%";
-
-
-    status.textContent =
-      "Stand still for calibration";
-
-
-    if (
-      calibrationFrames ===
-      CALIBRATION_FRAMES
-    ) {
-
-      calibrationHipY =
-        calibrationSum /
-        CALIBRATION_FRAMES;
-
-
-      stage.textContent =
-        "READY — START SKIPPING";
-
-
-      status.textContent =
-        "✅ AI READY FOR SKIPPING";
-    }
-
-
     return true;
   }
 
 
-  return false;
+  calibrationFrames++;
+
+  hipSamples.push(data.hipY);
+  ankleSamples.push(data.ankleY);
+
+
+  if (hipSamples.length > CALIBRATION_FRAMES) {
+    hipSamples.shift();
+  }
+
+  if (ankleSamples.length > CALIBRATION_FRAMES) {
+    ankleSamples.shift();
+  }
+
+
+  const percent =
+    Math.round(
+      calibrationFrames /
+      CALIBRATION_FRAMES *
+      100
+    );
+
+
+  stage.textContent =
+    "CALIBRATING " +
+    Math.min(percent, 100) +
+    "%";
+
+
+  status.textContent =
+    "Stand normally for calibration";
+
+
+  if (
+    calibrationFrames >=
+    CALIBRATION_FRAMES
+  ) {
+
+    calibrationHipY =
+      average(hipSamples);
+
+    calibrationAnkleY =
+      average(ankleSamples);
+
+    calibrationKneeY =
+      data.kneeY;
+
+    bodyScale =
+      Math.max(
+        data.bodyHeight,
+        0.15
+      );
+
+
+    state = "GROUND";
+
+
+    previousHipY =
+      data.hipY;
+
+    previousAnkleY =
+      data.ankleY;
+
+
+    stage.textContent =
+      "READY — START SKIPPING";
+
+    status.textContent =
+      "🔥 AI READY";
+
+
+    return false;
+  }
+
+
+  return true;
 }
 
 
-/* =========================
-   SKIP DETECTION
-========================= */
+/* =====================================================
+   AVERAGE
+===================================================== */
+
+function average(array) {
+
+  if (!array.length) {
+    return 0;
+  }
+
+  let total = 0;
+
+  for (const value of array) {
+    total += value;
+  }
+
+  return total / array.length;
+}
+
+
+/* =====================================================
+   SMOOTH VALUE
+===================================================== */
+
+function smooth(previous, current, amount = 0.65) {
+
+  if (previous === null) {
+    return current;
+  }
+
+  return (
+    previous * amount +
+    current * (1 - amount)
+  );
+}
+
+
+/* =====================================================
+   IMPROVED SKIP DETECTION
+===================================================== */
 
 function detectSkip(data) {
 
@@ -244,7 +368,10 @@ function detectSkip(data) {
   }
 
 
-  if (calibrationHipY === null) {
+  if (
+    calibrationFrames <
+    CALIBRATION_FRAMES
+  ) {
     return;
   }
 
@@ -254,81 +381,251 @@ function detectSkip(data) {
 
 
   /*
-    In video coordinates:
+     Smooth the body movement.
 
-    Smaller Y = body moves upward
-    Larger Y = body moves downward
+     This removes some MediaPipe frame-to-frame
+     shaking while keeping real jumps.
   */
 
-  const upward =
+  const hipY =
+    smooth(
+      previousHipY,
+      data.hipY,
+      0.55
+    );
+
+  const ankleY =
+    smooth(
+      previousAnkleY,
+      data.ankleY,
+      0.55
+    );
+
+
+  const hipMovement =
+    previousHipY === null
+      ? 0
+      : previousHipY - hipY;
+
+
+  const ankleMovement =
+    previousAnkleY === null
+      ? 0
+      : previousAnkleY - ankleY;
+
+
+  /*
+     Positive movement means upward.
+
+     Negative movement means downward.
+  */
+
+  upwardSpeed =
+    hipMovement;
+
+
+  downwardSpeed =
+    -hipMovement;
+
+
+  previousHipY =
+    hipY;
+
+  previousAnkleY =
+    ankleY;
+
+
+  /*
+     Adaptive threshold.
+
+     Bigger body = slightly larger threshold.
+  */
+
+  const scaleFactor =
+    Math.max(
+      0.7,
+      Math.min(
+        1.5,
+        bodyScale / 0.45
+      )
+    );
+
+
+  const upThreshold =
+    MIN_UP_MOVEMENT *
+    scaleFactor;
+
+
+  const downThreshold =
+    MIN_DOWN_MOVEMENT *
+    scaleFactor;
+
+
+  /*
+     How far the person has moved upward
+     from calibration position.
+  */
+
+  const upwardDistance =
     calibrationHipY -
-    data.hipY;
+    hipY;
 
 
-  const downward =
-    data.hipY -
-    calibrationHipY;
-
-
-  /* =====================
-     GOING UP
-  ===================== */
+  /*
+     =================================================
+     GROUND → AIR
+     =================================================
+  */
 
   if (
-    jumpState === "GROUND" &&
-    upward > UP_THRESHOLD
+    state === "GROUND" &&
+    (
+      upwardDistance >
+      MIN_JUMP_DISTANCE * scaleFactor
+      ||
+      upwardSpeed >
+      upThreshold
+    )
   ) {
 
-    jumpState = "AIR";
+    state = "AIR";
+
+    jumpPeak =
+      upwardDistance;
 
     stage.textContent =
-      "AIRBORNE";
+      "⬆ AIRBORNE";
+
+    return;
   }
 
 
-  /* =====================
-     COMING DOWN
-  ===================== */
+  /*
+     =================================================
+     AIR → PEAK
+     =================================================
+  */
 
   if (
-    jumpState === "AIR" &&
-    downward > DOWN_THRESHOLD
+    state === "AIR"
   ) {
 
     if (
-      now - lastSkipTime >
-      SKIP_COOLDOWN
+      upwardDistance >
+      jumpPeak
     ) {
 
-      skipCount++;
-
-      count.textContent =
-        skipCount;
-
-
-      lastSkipTime =
-        now;
-
-
-      stage.textContent =
-        "SKIP " +
-        skipCount;
-
-
-      status.textContent =
-        "🔥 SKIP DETECTED";
+      jumpPeak =
+        upwardDistance;
     }
 
 
-    jumpState =
-      "GROUND";
+    /*
+       When upward motion slows,
+       we reached the jump peak.
+    */
+
+    if (
+      upwardSpeed <
+      upThreshold * 0.25
+    ) {
+
+      state =
+        "PEAK";
+
+      stage.textContent =
+        "⬆ PEAK";
+    }
+
+    return;
+  }
+
+
+  /*
+     =================================================
+     PEAK → GROUND
+     =================================================
+  */
+
+  if (
+    state === "PEAK"
+  ) {
+
+    /*
+       Downward motion OR returning toward
+       starting height.
+    */
+
+    const returnedDown =
+      downwardSpeed >
+      downThreshold;
+
+    const nearGround =
+      upwardDistance <
+      jumpPeak * 0.45;
+
+
+    if (
+      returnedDown &&
+      nearGround
+    ) {
+
+      /*
+         Prevent duplicate counting.
+      */
+
+      if (
+        now -
+        lastJumpTime >
+        MIN_TIME_BETWEEN_SKIPS
+      ) {
+
+        /*
+           Require a meaningful jump.
+
+           This prevents tiny body movements
+           from becoming skips.
+        */
+
+        if (
+          jumpPeak >
+          MIN_JUMP_DISTANCE *
+          scaleFactor
+        ) {
+
+          skipCount++;
+
+          count.textContent =
+            skipCount;
+
+
+          lastJumpTime =
+            now;
+
+
+          stage.textContent =
+            "🔥 SKIP " +
+            skipCount;
+
+          status.textContent =
+            "SKIP DETECTED";
+        }
+      }
+
+
+      state =
+        "GROUND";
+
+      jumpPeak =
+        0;
+    }
   }
 }
 
 
-/* =========================
+/* =====================================================
    DRAW POSE
-========================= */
+===================================================== */
 
 function drawPose(result) {
 
@@ -345,29 +642,85 @@ function drawPose(result) {
     !result.landmarks ||
     result.landmarks.length === 0
   ) {
-
-    stage.textContent =
-      aiReady
-        ? "BODY NOT FOUND"
-        : "AI LOADING";
-
     return;
   }
 
 
-  const landmarks =
+  const points =
     result.landmarks[0];
 
 
-  ctx.fillStyle =
-    "#00ff88";
+  /*
+     Connections
+  */
+
+  const connections = [
+
+    [11, 12],
+
+    [11, 13],
+    [13, 15],
+
+    [12, 14],
+    [14, 16],
+
+    [11, 23],
+    [12, 24],
+
+    [23, 24],
+
+    [23, 25],
+    [25, 27],
+
+    [24, 26],
+    [26, 28]
+
+  ];
 
 
-  for (const point of landmarks) {
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = "#00ff88";
+
+
+  for (const [a, b] of connections) {
+
+    const p1 = points[a];
+    const p2 = points[b];
+
+
+    if (!p1 || !p2) {
+      continue;
+    }
+
+
+    ctx.beginPath();
+
+    ctx.moveTo(
+      p1.x * canvas.width,
+      p1.y * canvas.height
+    );
+
+    ctx.lineTo(
+      p2.x * canvas.width,
+      p2.y * canvas.height
+    );
+
+    ctx.stroke();
+  }
+
+
+  /*
+     Points
+  */
+
+  ctx.fillStyle = "#ffffff";
+
+
+  for (const point of points) {
 
     if (
       point.visibility !== undefined &&
-      point.visibility < 0.20
+      point.visibility < 0.15
     ) {
       continue;
     }
@@ -377,14 +730,12 @@ function drawPose(result) {
       point.x *
       canvas.width;
 
-
     const y =
       point.y *
       canvas.height;
 
 
     ctx.beginPath();
-
 
     ctx.arc(
       x,
@@ -394,15 +745,14 @@ function drawPose(result) {
       Math.PI * 2
     );
 
-
     ctx.fill();
   }
 }
 
 
-/* =========================
-   PROCESS POSE
-========================= */
+/* =====================================================
+   PROCESS AI
+===================================================== */
 
 function processPose(result) {
 
@@ -414,6 +764,10 @@ function processPose(result) {
     !result.landmarks ||
     result.landmarks.length === 0
   ) {
+
+    stage.textContent =
+      "BODY NOT FOUND";
+
     return;
   }
 
@@ -422,11 +776,13 @@ function processPose(result) {
     result.landmarks[0];
 
 
-  const body =
-    getBodyData(landmarks);
+  const data =
+    getBodyData(
+      landmarks
+    );
 
 
-  if (!body) {
+  if (!data) {
 
     stage.textContent =
       "BODY PARTLY LOST";
@@ -440,19 +796,19 @@ function processPose(result) {
     CALIBRATION_FRAMES
   ) {
 
-    calibrate(body);
+    calibrate(data);
 
     return;
   }
 
 
-  detectSkip(body);
+  detectSkip(data);
 }
 
 
-/* =========================
+/* =====================================================
    LOAD AI
-========================= */
+===================================================== */
 
 async function loadAI() {
 
@@ -495,785 +851,4 @@ async function loadAI() {
 
 
           minPoseDetectionConfidence:
-            0.35,
-
-
-          minPosePresenceConfidence:
-            0.35,
-
-
-          minTrackingConfidence:
-            0.35
-        }
-      );
-
-
-    aiReady = true;
-
-
-    aiState.textContent =
-      "AI ✓";
-
-
-    status.textContent =
-      "✅ AI READY";
-
-
-    console.log(
-      "SkipFit AI loaded"
-    );
-
-  }
-
-  catch (error) {
-
-    console.error(
-      "AI ERROR:",
-      error
-    );
-
-
-    aiReady = false;
-
-
-    aiState.textContent =
-      "AI ✕";
-
-
-    status.textContent =
-      "❌ AI FAILED TO LOAD";
-  }
-}
-
-
-/* =========================
-   CANVAS SIZE
-========================= */
-
-function resizeCanvas() {
-
-  if (
-    camera.videoWidth &&
-    camera.videoHeight
-  ) {
-
-    canvas.width =
-      camera.videoWidth;
-
-    canvas.height =
-      camera.videoHeight;
-
-    return;
-  }
-
-
-  if (
-    videoPlayer.videoWidth &&
-    videoPlayer.videoHeight
-  ) {
-
-    canvas.width =
-      videoPlayer.videoWidth;
-
-    canvas.height =
-      videoPlayer.videoHeight;
-  }
-}
-
-
-/* =========================
-   START CAMERA
-========================= */
-
-startCamera.onclick =
-  async function () {
-
-    try {
-
-      if (
-        !navigator.mediaDevices ||
-        !navigator.mediaDevices.getUserMedia
-      ) {
-
-        status.textContent =
-          "❌ Camera API unavailable";
-
-        return;
-      }
-
-
-      if (stream) {
-
-        stream.getTracks().forEach(
-          track => track.stop()
-        );
-
-        stream = null;
-      }
-
-
-      resetSkipSystem();
-
-
-      status.textContent =
-        "Requesting camera...";
-
-
-      stream =
-        await navigator.mediaDevices.getUserMedia({
-
-          video: {
-
-            facingMode: facing,
-
-            width: {
-              ideal: 640
-            },
-
-            height: {
-              ideal: 480
-            }
-          },
-
-          audio: false
-        });
-
-
-      camera.srcObject =
-        stream;
-
-
-      camera.style.display =
-        "block";
-
-
-      videoPlayer.style.display =
-        "none";
-
-
-      await camera.play();
-
-
-      cameraRunning =
-        true;
-
-
-      cameraState.textContent =
-        "CAMERA ✓";
-
-
-      startCamera.disabled =
-        true;
-
-
-      switchCamera.disabled =
-        false;
-
-
-      stopCamera.disabled =
-        false;
-
-
-      stage.textContent =
-        "CAMERA ACTIVE";
-
-
-      status.textContent =
-        "📷 CAMERA WORKING";
-
-
-      resizeCanvas();
-
-
-      cameraLoop();
-
-    }
-
-    catch (error) {
-
-      console.error(
-        "CAMERA ERROR:",
-        error
-      );
-
-
-      status.textContent =
-        "❌ CAMERA ERROR: " +
-        error.name;
-
-
-      stage.textContent =
-        "CAMERA FAILED";
-    }
-  };
-
-
-/* =========================
-   CAMERA LOOP
-========================= */
-
-function cameraLoop() {
-
-  if (!cameraRunning) {
-    return;
-  }
-
-
-  requestAnimationFrame(
-    cameraLoop
-  );
-
-
-  if (!aiReady) {
-    return;
-  }
-
-
-  if (camera.readyState < 2) {
-    return;
-  }
-
-
-  const now =
-    performance.now();
-
-
-  if (
-    now - lastProcess <
-    80
-  ) {
-    return;
-  }
-
-
-  lastProcess =
-    now;
-
-
-  try {
-
-    resizeCanvas();
-
-
-    const result =
-      landmarker.detectForVideo(
-        camera,
-        now
-      );
-
-
-    processPose(result);
-
-  }
-
-  catch (error) {
-
-    console.error(
-      "CAMERA AI ERROR:",
-      error
-    );
-  }
-}
-
-
-/* =========================
-   SWITCH CAMERA
-========================= */
-
-switchCamera.onclick =
-  async function () {
-
-    facing =
-      facing === "user"
-        ? "environment"
-        : "user";
-
-
-    if (stream) {
-
-      stream.getTracks().forEach(
-        track => track.stop()
-      );
-
-      stream = null;
-    }
-
-
-    cameraRunning =
-      false;
-
-
-    startCamera.disabled =
-      false;
-
-
-    switchCamera.disabled =
-      true;
-
-
-    stopCamera.disabled =
-      true;
-
-
-    await startCamera.click();
-  };
-
-
-/* =========================
-   STOP CAMERA
-========================= */
-
-stopCamera.onclick =
-  function () {
-
-    cameraRunning =
-      false;
-
-
-    if (stream) {
-
-      stream.getTracks().forEach(
-        track => track.stop()
-      );
-
-      stream = null;
-    }
-
-
-    camera.srcObject =
-      null;
-
-
-    camera.style.display =
-      "none";
-
-
-    ctx.clearRect(
-      0,
-      0,
-      canvas.width,
-      canvas.height
-    );
-
-
-    resetSkipSystem();
-
-
-    cameraState.textContent =
-      "CAMERA ○";
-
-
-    startCamera.disabled =
-      false;
-
-
-    switchCamera.disabled =
-      true;
-
-
-    stopCamera.disabled =
-      true;
-
-
-    stage.textContent =
-      "STOPPED";
-
-
-    status.textContent =
-      "Camera stopped";
-  };
-
-
-/* =========================
-   VIDEO SELECT
-========================= */
-
-videoInput.onchange =
-  function () {
-
-    const file =
-      videoInput.files[0];
-
-
-    if (!file) {
-      return;
-    }
-
-
-    if (videoURL) {
-
-      URL.revokeObjectURL(
-        videoURL
-      );
-    }
-
-
-    videoURL =
-      URL.createObjectURL(file);
-
-
-    videoPlayer.src =
-      videoURL;
-
-
-    videoPlayer.load();
-
-
-    videoPlayer.style.display =
-      "block";
-
-
-    camera.style.display =
-      "none";
-
-
-    cameraRunning =
-      false;
-
-
-    if (stream) {
-
-      stream.getTracks().forEach(
-        track => track.stop()
-      );
-
-      stream = null;
-    }
-
-
-    camera.srcObject =
-      null;
-
-
-    resetSkipSystem();
-
-
-    videoState.textContent =
-      "VIDEO ✓";
-
-
-    analyzeVideo.disabled =
-      false;
-
-
-    startCamera.disabled =
-      false;
-
-
-    switchCamera.disabled =
-      true;
-
-
-    stopCamera.disabled =
-      true;
-
-
-    progress.value =
-      0;
-
-
-    stage.textContent =
-      "VIDEO READY";
-
-
-    status.textContent =
-      "✅ VIDEO SELECTED";
-
-
-    videoPlayer.onloadedmetadata =
-      function () {
-
-        resizeCanvas();
-      };
-
-
-    console.log(
-      "Video:",
-      file.name
-    );
-  };
-
-
-/* =========================
-   SEEK VIDEO
-========================= */
-
-function seekVideo(time) {
-
-  return new Promise(
-    resolve => {
-
-      const target =
-        Math.max(
-          0,
-          Math.min(
-            time,
-            videoPlayer.duration
-          )
-        );
-
-
-      if (
-        Math.abs(
-          videoPlayer.currentTime -
-          target
-        ) < 0.001
-      ) {
-
-        resolve();
-
-        return;
-      }
-
-
-      const onSeeked =
-        function () {
-
-          videoPlayer.removeEventListener(
-            "seeked",
-            onSeeked
-          );
-
-
-          resolve();
-        };
-
-
-      videoPlayer.addEventListener(
-        "seeked",
-        onSeeked
-      );
-
-
-      videoPlayer.currentTime =
-        target;
-    }
-  );
-}
-
-
-/* =========================
-   ANALYZE VIDEO
-========================= */
-
-analyzeVideo.onclick =
-  async function () {
-
-    if (!videoURL) {
-      return;
-    }
-
-
-    if (analysing) {
-      return;
-    }
-
-
-    if (!aiReady) {
-
-      status.textContent =
-        "❌ AI is not ready";
-
-      return;
-    }
-
-
-    analysing =
-      true;
-
-
-    analyzeVideo.disabled =
-      true;
-
-
-    startCamera.disabled =
-      true;
-
-
-    resetSkipSystem();
-
-
-    status.textContent =
-      "🧠 ANALYZING VIDEO...";
-
-
-    stage.textContent =
-      "PREPARING";
-
-
-    try {
-
-      if (
-        videoPlayer.readyState < 1
-      ) {
-
-        await new Promise(
-          resolve => {
-
-            videoPlayer.addEventListener(
-              "loadedmetadata",
-              resolve,
-              {
-                once: true
-              }
-            );
-          }
-        );
-      }
-
-
-      const duration =
-        videoPlayer.duration;
-
-
-      if (
-        !duration ||
-        !isFinite(duration)
-      ) {
-
-        throw new Error(
-          "Video duration unavailable"
-        );
-      }
-
-
-      const fps =
-        12;
-
-
-      const step =
-        1 / fps;
-
-
-      const total =
-        Math.ceil(
-          duration * fps
-        );
-
-
-      let frame =
-        0;
-
-
-      videoTimestamp =
-        0;
-
-
-      videoPlayer.pause();
-
-
-      resizeCanvas();
-
-
-      for (
-        let time = 0;
-        time < duration;
-        time += step
-      ) {
-
-        await seekVideo(time);
-
-
-        videoTimestamp +=
-          1000 / fps;
-
-
-        const result =
-          landmarker.detectForVideo(
-            videoPlayer,
-            videoTimestamp
-          );
-
-
-        processPose(result);
-
-
-        frame++;
-
-
-        progress.value =
-          Math.min(
-            100,
-            Math.round(
-              frame /
-              total *
-              100
-            )
-          );
-
-
-        if (
-          frame % 8 === 0
-        ) {
-
-          await new Promise(
-            resolve =>
-              setTimeout(
-                resolve,
-                0
-              )
-          );
-        }
-      }
-
-
-      videoPlayer.pause();
-
-
-      progress.value =
-        100;
-
-
-      stage.textContent =
-        "✓ VIDEO ANALYZED";
-
-
-      status.textContent =
-        "✅ Analysis complete: " +
-        skipCount +
-        " skips";
-
-
-    }
-
-    catch (error) {
-
-      console.error(
-        "VIDEO ANALYSIS ERROR:",
-        error
-      );
-
-
-      status.textContent =
-        "❌ VIDEO ERROR";
-
-
-      stage.textContent =
-        error.message ||
-        "Analysis failed";
-    }
-
-
-    finally {
-
-      analysing =
-        false;
-
-
-      analyzeVideo.disabled =
-        false;
-
-
-      startCamera.disabled =
-        false;
-    }
-  };
-
-
-/* =========================
-   START
-========================= */
-
-resetSkipSystem();
-
-loadAI();
+            0.30,

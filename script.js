@@ -8,53 +8,25 @@ import {
    ELEMENTS
 ========================= */
 
-const camera =
-  document.getElementById("camera");
+const camera = document.getElementById("camera");
+const videoPlayer = document.getElementById("videoFilePlayer");
+const videoInput = document.getElementById("videoInput");
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
 
-const videoPlayer =
-  document.getElementById("videoFilePlayer");
+const status = document.getElementById("status");
+const stage = document.getElementById("stage");
+const count = document.getElementById("count");
+const progress = document.getElementById("progress");
 
-const videoInput =
-  document.getElementById("videoInput");
+const startCamera = document.getElementById("startCamera");
+const switchCamera = document.getElementById("switchCamera");
+const stopCamera = document.getElementById("stopCamera");
+const analyzeVideo = document.getElementById("analyzeVideo");
 
-const canvas =
-  document.getElementById("canvas");
-
-const ctx =
-  canvas.getContext("2d");
-
-const status =
-  document.getElementById("status");
-
-const stage =
-  document.getElementById("stage");
-
-const count =
-  document.getElementById("count");
-
-const progress =
-  document.getElementById("progress");
-
-const startCamera =
-  document.getElementById("startCamera");
-
-const switchCamera =
-  document.getElementById("switchCamera");
-
-const stopCamera =
-  document.getElementById("stopCamera");
-
-const analyzeVideo =
-  document.getElementById("analyzeVideo");
-
-const cameraState =
-  document.getElementById("cameraState");
-
-const videoState =
-  document.getElementById("videoState");
-
-const aiState =
-  document.getElementById("aiState");
+const cameraState = document.getElementById("cameraState");
+const videoState = document.getElementById("videoState");
+const aiState = document.getElementById("aiState");
 
 
 /* =========================
@@ -75,19 +47,21 @@ let cameraRunning = false;
 
 let analysing = false;
 
+let lastProcess = 0;
+
+let videoTimestamp = 0;
+
 
 /* =========================
    AI LOADING
-   IMPORTANT:
-   AI DOES NOT BLOCK CAMERA
 ========================= */
 
-async function loadAI(){
+async function loadAI() {
 
-  try{
+  try {
 
-    status.textContent =
-      "Loading AI...";
+    status.textContent = "Loading AI...";
+    aiState.textContent = "AI ...";
 
     const vision =
       await FilesetResolver.forVisionTasks(
@@ -98,56 +72,46 @@ async function loadAI(){
       await PoseLandmarker.createFromOptions(
         vision,
         {
-          baseOptions:{
+          baseOptions: {
+
             modelAssetPath:
               "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
 
-            delegate:"CPU"
+            delegate: "CPU"
           },
 
-          runningMode:"VIDEO",
+          runningMode: "VIDEO",
 
-          numPoses:1,
+          numPoses: 1,
 
-          minPoseDetectionConfidence:.35,
+          minPoseDetectionConfidence: 0.35,
 
-          minPosePresenceConfidence:.35,
+          minPosePresenceConfidence: 0.35,
 
-          minTrackingConfidence:.35
+          minTrackingConfidence: 0.35
         }
       );
 
     aiReady = true;
 
-    aiState.textContent =
-      "AI ✓";
+    aiState.textContent = "AI ✓";
 
-    status.textContent =
-      "✅ AI READY";
+    status.textContent = "✅ AI READY";
 
-    console.log(
-      "SkipFit AI ready"
-    );
+    console.log("SkipFit AI ready");
 
-  }catch(error){
+  }
 
-    console.error(
-      "AI ERROR:",
-      error
-    );
+  catch (error) {
 
-    aiState.textContent =
-      "AI ✕";
+    console.error("AI ERROR:", error);
 
-    /*
-      IMPORTANT:
-      Camera and video upload
-      still work even if AI fails.
-    */
+    aiReady = false;
+
+    aiState.textContent = "AI ✕";
 
     status.textContent =
       "Camera/video ready — AI unavailable";
-
   }
 }
 
@@ -157,12 +121,14 @@ async function loadAI(){
 ========================= */
 
 startCamera.onclick =
-  async function(){
+  async function () {
 
-    try{
+    try {
 
-      if(!navigator.mediaDevices ||
-         !navigator.mediaDevices.getUserMedia){
+      if (
+        !navigator.mediaDevices ||
+        !navigator.mediaDevices.getUserMedia
+      ) {
 
         status.textContent =
           "Camera API unavailable";
@@ -170,73 +136,87 @@ startCamera.onclick =
         return;
       }
 
-      if(stream){
 
-        stream.getTracks()
-          .forEach(
-            track => track.stop()
-          );
+      /* Stop previous stream */
+
+      if (stream) {
+
+        stream.getTracks().forEach(
+          track => track.stop()
+        );
+
+        stream = null;
       }
+
 
       status.textContent =
         "Requesting camera...";
 
+
       stream =
         await navigator.mediaDevices.getUserMedia({
 
-          video:{
-            facingMode:facing,
+          video: {
 
-            width:{
-              ideal:640
+            facingMode: facing,
+
+            width: {
+              ideal: 640
             },
 
-            height:{
-              ideal:480
+            height: {
+              ideal: 480
             }
           },
 
-          audio:false
+          audio: false
         });
 
-      camera.srcObject =
-        stream;
 
-      camera.style.display =
-        "block";
+      camera.srcObject = stream;
 
-      videoPlayer.style.display =
-        "none";
+      camera.style.display = "block";
+
+      videoPlayer.style.display = "none";
+
 
       await camera.play();
 
+
       cameraRunning = true;
+
 
       cameraState.textContent =
         "CAMERA ✓";
 
-      startCamera.disabled =
-        true;
 
-      switchCamera.disabled =
-        false;
+      startCamera.disabled = true;
 
-      stopCamera.disabled =
-        false;
+      switchCamera.disabled = false;
+
+      stopCamera.disabled = false;
+
 
       stage.textContent =
         "CAMERA ACTIVE";
 
+
       status.textContent =
         "📷 CAMERA WORKING";
+
 
       resizeCanvas();
 
       cameraLoop();
 
-    }catch(error){
+    }
 
-      console.error(error);
+    catch (error) {
+
+      console.error(
+        "CAMERA ERROR:",
+        error
+      );
 
       status.textContent =
         "❌ CAMERA ERROR: " +
@@ -253,25 +233,34 @@ startCamera.onclick =
 ========================= */
 
 switchCamera.onclick =
-  async function(){
+  async function () {
 
     facing =
       facing === "user"
         ? "environment"
         : "user";
 
-    if(stream){
 
-      stream.getTracks()
-        .forEach(
-          track => track.stop()
-        );
+    if (stream) {
+
+      stream.getTracks().forEach(
+        track => track.stop()
+      );
+
+      stream = null;
     }
 
-    stream = null;
 
-    startCamera.disabled =
-      false;
+    cameraRunning = false;
+
+    startCamera.disabled = false;
+
+    switchCamera.disabled = true;
+
+    stopCamera.disabled = true;
+
+
+    /* Start selected camera */
 
     startCamera.click();
   };
@@ -282,39 +271,48 @@ switchCamera.onclick =
 ========================= */
 
 stopCamera.onclick =
-  function(){
+  function () {
 
     cameraRunning = false;
 
-    if(stream){
 
-      stream.getTracks()
-        .forEach(
-          track => track.stop()
-        );
+    if (stream) {
+
+      stream.getTracks().forEach(
+        track => track.stop()
+      );
 
       stream = null;
     }
 
+
     camera.srcObject = null;
 
-    camera.style.display =
-      "none";
+    camera.style.display = "none";
+
+
+    ctx.clearRect(
+      0,
+      0,
+      canvas.width,
+      canvas.height
+    );
+
 
     cameraState.textContent =
       "CAMERA ○";
 
-    startCamera.disabled =
-      false;
 
-    switchCamera.disabled =
-      true;
+    startCamera.disabled = false;
 
-    stopCamera.disabled =
-      true;
+    switchCamera.disabled = true;
+
+    stopCamera.disabled = true;
+
 
     stage.textContent =
       "STOPPED";
+
 
     status.textContent =
       "Camera stopped";
@@ -322,21 +320,24 @@ stopCamera.onclick =
 
 
 /* =========================
-   CANVAS
+   CANVAS SIZE
 ========================= */
 
-function resizeCanvas(){
+function resizeCanvas() {
 
-  if(camera.videoWidth){
+  if (camera.videoWidth) {
 
     canvas.width =
       camera.videoWidth;
 
     canvas.height =
       camera.videoHeight;
+
+    return;
   }
 
-  else if(videoPlayer.videoWidth){
+
+  if (videoPlayer.videoWidth) {
 
     canvas.width =
       videoPlayer.videoWidth;
@@ -351,35 +352,44 @@ function resizeCanvas(){
    CAMERA AI LOOP
 ========================= */
 
-let lastProcess = 0;
+function cameraLoop() {
 
-
-function cameraLoop(){
-
-  if(!cameraRunning)
+  if (!cameraRunning)
     return;
+
 
   requestAnimationFrame(
     cameraLoop
   );
 
-  if(!aiReady)
+
+  if (!aiReady)
     return;
 
-  if(camera.readyState < 2)
+
+  if (camera.readyState < 2)
     return;
+
 
   const now =
     performance.now();
 
-  if(now-lastProcess < 80)
+
+  /* About 12.5 AI frames/second */
+
+  if (
+    now - lastProcess < 80
+  )
     return;
+
 
   lastProcess = now;
 
-  try{
+
+  try {
 
     resizeCanvas();
+
 
     const result =
       landmarker.detectForVideo(
@@ -387,11 +397,12 @@ function cameraLoop(){
         now
       );
 
-    drawPose(
-      result
-    );
 
-  }catch(error){
+    drawPose(result);
+
+  }
+
+  catch (error) {
 
     console.error(
       "Camera AI:",
@@ -405,7 +416,7 @@ function cameraLoop(){
    DRAW BODY
 ========================= */
 
-function drawPose(result){
+function drawPose(result) {
 
   ctx.clearRect(
     0,
@@ -414,11 +425,12 @@ function drawPose(result){
     canvas.height
   );
 
-  if(
+
+  if (
     !result ||
     !result.landmarks ||
     !result.landmarks.length
-  ){
+  ) {
 
     stage.textContent =
       aiReady
@@ -428,34 +440,41 @@ function drawPose(result){
     return;
   }
 
+
   const points =
     result.landmarks[0];
+
 
   stage.textContent =
     "BODY DETECTED";
 
+
   ctx.fillStyle =
     "#00ff88";
 
-  for(
-    const p of points
-  ){
 
-    if(
+  for (const p of points) {
+
+    if (
       p.visibility !== undefined &&
-      p.visibility < .25
-    )
+      p.visibility < 0.25
+    ) {
+
       continue;
+    }
+
 
     ctx.beginPath();
+
 
     ctx.arc(
       p.x * canvas.width,
       p.y * canvas.height,
       4,
       0,
-      Math.PI*2
+      Math.PI * 2
     );
+
 
     ctx.fill();
   }
@@ -463,62 +482,169 @@ function drawPose(result){
 
 
 /* =========================
-   VIDEO FILE
+   VIDEO FILE SELECT
 ========================= */
 
 videoInput.onchange =
-  function(){
+  function () {
 
     const file =
       videoInput.files[0];
 
-    if(!file)
+
+    if (!file)
       return;
 
-    if(videoURL){
+
+    /* Remove previous object URL */
+
+    if (videoURL) {
 
       URL.revokeObjectURL(
         videoURL
       );
     }
 
+
     videoURL =
-      URL.createObjectURL(
-        file
-      );
+      URL.createObjectURL(file);
+
 
     videoPlayer.src =
       videoURL;
 
+
     videoPlayer.load();
+
 
     videoPlayer.style.display =
       "block";
 
+
     camera.style.display =
       "none";
+
+
+    /* Stop camera */
+
+    cameraRunning = false;
+
+
+    if (stream) {
+
+      stream.getTracks().forEach(
+        track => track.stop()
+      );
+
+      stream = null;
+    }
+
+
+    camera.srcObject = null;
+
+
+    startCamera.disabled = false;
+
+    switchCamera.disabled = true;
+
+    stopCamera.disabled = true;
+
 
     videoState.textContent =
       "VIDEO ✓";
 
+
     analyzeVideo.disabled =
       false;
+
 
     stage.textContent =
       "VIDEO READY";
 
+
     status.textContent =
       "✅ VIDEO SELECTED";
 
+
     progress.value = 0;
+
+
+    resizeCanvas();
+
 
     console.log(
       "Selected:",
-      file.name,
-      file.size,
+      file.name
+    );
+
+    console.log(
+      "Size:",
+      file.size
+    );
+
+    console.log(
+      "Type:",
       file.type
     );
   };
+
+
+/* =========================
+   WAIT FOR VIDEO SEEK
+========================= */
+
+function seekVideo(time) {
+
+  return new Promise(
+    resolve => {
+
+      const target =
+        Math.max(
+          0,
+          Math.min(
+            time,
+            videoPlayer.duration || time
+          )
+        );
+
+
+      /* Already close enough */
+
+      if (
+        Math.abs(
+          videoPlayer.currentTime - target
+        ) < 0.001
+      ) {
+
+        resolve();
+
+        return;
+      }
+
+
+      const onSeeked =
+        () => {
+
+          videoPlayer.removeEventListener(
+            "seeked",
+            onSeeked
+          );
+
+          resolve();
+        };
+
+
+      videoPlayer.addEventListener(
+        "seeked",
+        onSeeked
+      );
+
+
+      videoPlayer.currentTime =
+        target;
+    }
+  );
+}
 
 
 /* =========================
@@ -526,56 +652,65 @@ videoInput.onchange =
 ========================= */
 
 analyzeVideo.onclick =
-  async function(){
+  async function () {
 
-    if(!videoURL)
+    if (!videoURL)
       return;
 
-    if(analyzing)
+
+    /* FIXED:
+       analysing, not analyzing
+    */
+
+    if (analysing)
       return;
+
 
     analysing = true;
+
 
     analyzeVideo.disabled =
       true;
 
+
     startCamera.disabled =
       true;
+
 
     status.textContent =
       aiReady
         ? "🧠 ANALYZING VIDEO..."
         : "Video loaded — AI unavailable";
 
+
     stage.textContent =
       aiReady
         ? "FRAME ANALYSIS"
         : "VIDEO READY";
 
-    try{
 
-      await new Promise(
-        resolve => {
+    try {
 
-          if(
-            videoPlayer.readyState >= 1
-          ){
+      /* Wait for metadata */
 
-            resolve();
+      if (
+        videoPlayer.readyState < 1
+      ) {
 
-          }else{
+        await new Promise(
+          resolve => {
 
             videoPlayer.addEventListener(
               "loadedmetadata",
               resolve,
-              {once:true}
+              { once: true }
             );
           }
-        }
-      );
+        );
+      }
 
 
-      if(!aiReady){
+      if (!aiReady) {
 
         status.textContent =
           "Video works, but AI did not load.";
@@ -590,10 +725,11 @@ analyzeVideo.onclick =
       const duration =
         videoPlayer.duration;
 
-      if(
+
+      if (
         !duration ||
         !isFinite(duration)
-      ){
+      ) {
 
         throw new Error(
           "Could not read video duration"
@@ -601,12 +737,18 @@ analyzeVideo.onclick =
       }
 
 
+      /*
+
+        Analyze approximately
+        12 frames per second.
+
+      */
+
       const fps = 12;
 
       const step =
         1 / fps;
 
-      let frame = 0;
 
       const total =
         Math.ceil(
@@ -614,47 +756,46 @@ analyzeVideo.onclick =
         );
 
 
-      for(
-        let time=0;
-        time<duration;
-        time+=step
-      ){
-
-        videoPlayer.currentTime =
-          time;
+      let frame = 0;
 
 
-        await new Promise(
-          resolve => {
+      videoTimestamp = 0;
 
-            if(
-              !videoPlayer.seeking
-            ){
 
-              resolve();
+      videoPlayer.pause();
 
-            }else{
 
-              videoPlayer.addEventListener(
-                "seeked",
-                resolve,
-                {once:true}
-              );
-            }
-          }
-        );
+      resizeCanvas();
+
+
+      for (
+        let time = 0;
+        time < duration;
+        time += step
+      ) {
+
+        await seekVideo(time);
+
+
+        resizeCanvas();
+
+
+        /*
+          PoseLandmarker VIDEO mode
+          requires increasing timestamps.
+        */
+
+        videoTimestamp += 1000 / fps;
 
 
         const result =
           landmarker.detectForVideo(
             videoPlayer,
-            performance.now()
+            videoTimestamp
           );
 
 
-        drawPose(
-          result
-        );
+        drawPose(result);
 
 
         frame++;
@@ -673,13 +814,17 @@ analyzeVideo.onclick =
 
 
         /*
-          Let the phone breathe.
+          Give the phone a tiny break
+          during long videos.
         */
 
-        if(frame % 8 === 0){
+        if (
+          frame % 8 === 0
+        ) {
 
           await new Promise(
-            r => setTimeout(r,0)
+            resolve =>
+              setTimeout(resolve, 0)
           );
         }
       }
@@ -687,29 +832,46 @@ analyzeVideo.onclick =
 
       videoPlayer.pause();
 
+
+      progress.value = 100;
+
+
       stage.textContent =
         "✓ VIDEO ANALYZED";
+
 
       status.textContent =
         "AI frame analysis complete";
 
-    }catch(error){
 
-      console.error(error);
+    }
+
+    catch (error) {
+
+      console.error(
+        "VIDEO ANALYSIS ERROR:",
+        error
+      );
+
 
       status.textContent =
         "❌ VIDEO ERROR";
 
+
       stage.textContent =
-        error.message;
+        error.message ||
+        "Analysis failed";
     }
 
-    finally{
+
+    finally {
 
       analysing = false;
 
+
       analyzeVideo.disabled =
         false;
+
 
       startCamera.disabled =
         false;

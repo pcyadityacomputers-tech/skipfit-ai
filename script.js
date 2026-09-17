@@ -852,3 +852,558 @@ async function loadAI() {
 
           minPoseDetectionConfidence:
             0.30,
+
+
+          minPosePresenceConfidence:
+            0.30,
+
+
+          minTrackingConfidence:
+            0.30
+        }
+      );
+
+
+    aiReady =
+      true;
+
+
+    aiState.textContent =
+      "AI ✓";
+
+
+    status.textContent =
+      "✅ AI READY";
+
+
+    stage.textContent =
+      "READY";
+
+
+  }
+
+  catch (error) {
+
+    console.error(error);
+
+
+    aiReady =
+      false;
+
+
+    aiState.textContent =
+      "AI ✕";
+
+
+    status.textContent =
+      "❌ AI FAILED";
+
+
+    stage.textContent =
+      "CHECK INTERNET";
+  }
+}
+
+
+/* =====================================================
+   CANVAS SIZE
+===================================================== */
+
+function resizeCanvas() {
+
+  const video =
+    camera.style.display !== "none"
+      ? camera
+      : videoPlayer;
+
+
+  if (
+    video.videoWidth &&
+    video.videoHeight
+  ) {
+
+    canvas.width =
+      video.videoWidth;
+
+    canvas.height =
+      video.videoHeight;
+  }
+}
+
+
+/* =====================================================
+   CAMERA START
+===================================================== */
+
+startCamera.onclick =
+  async function () {
+
+    try {
+
+      if (!navigator.mediaDevices) {
+
+        status.textContent =
+          "Camera unavailable";
+
+        return;
+      }
+
+
+      if (stream) {
+
+        stream.getTracks().forEach(
+          track =>
+            track.stop()
+        );
+      }
+
+
+      resetCounter();
+
+
+      status.textContent =
+        "Requesting camera...";
+
+
+      stream =
+        await navigator.mediaDevices.getUserMedia({
+
+          video: {
+
+            facingMode: facing,
+
+            width: {
+              ideal: 640
+            },
+
+            height: {
+              ideal: 480
+            },
+
+            frameRate: {
+              ideal: 30
+            }
+          },
+
+          audio: false
+        });
+
+
+      camera.srcObject =
+        stream;
+
+
+      camera.style.display =
+        "block";
+
+
+      videoPlayer.style.display =
+        "none";
+
+
+      await camera.play();
+
+
+      cameraRunning =
+        true;
+
+
+      cameraState.textContent =
+        "CAMERA ✓";
+
+
+      startCamera.disabled =
+        true;
+
+      switchCamera.disabled =
+        false;
+
+      stopCamera.disabled =
+        false;
+
+
+      status.textContent =
+        "📷 CAMERA WORKING";
+
+
+      stage.textContent =
+        "CALIBRATING";
+
+
+      resizeCanvas();
+
+
+      cameraLoop();
+
+    }
+
+    catch (error) {
+
+      console.error(error);
+
+
+      status.textContent =
+        "❌ CAMERA ERROR: " +
+        error.name;
+
+      stage.textContent =
+        "CAMERA FAILED";
+    }
+  };
+
+
+/* =====================================================
+   CAMERA LOOP
+===================================================== */
+
+let lastProcessTime = 0;
+
+
+function cameraLoop() {
+
+  if (!cameraRunning) {
+    return;
+  }
+
+
+  requestAnimationFrame(
+    cameraLoop
+  );
+
+
+  if (!aiReady) {
+    return;
+  }
+
+
+  if (
+    camera.readyState <
+    2
+  ) {
+    return;
+  }
+
+
+  const now =
+    performance.now();
+
+
+  /*
+     About 20–25 AI frames/sec.
+
+     This is faster than the old 12 FPS
+     feeling and helps catch quick skips.
+  */
+
+  if (
+    now -
+    lastProcessTime <
+    45
+  ) {
+    return;
+  }
+
+
+  lastProcessTime =
+    now;
+
+
+  resizeCanvas();
+
+
+  try {
+
+    const result =
+      landmarker.detectForVideo(
+        camera,
+        now
+      );
+
+
+    processPose(result);
+
+  }
+
+  catch (error) {
+
+    console.error(
+      "Pose error:",
+      error
+    );
+  }
+}
+
+
+/* =====================================================
+   SWITCH CAMERA
+===================================================== */
+
+switchCamera.onclick =
+  async function () {
+
+    facing =
+      facing === "user"
+        ? "environment"
+        : "user";
+
+
+    cameraRunning =
+      false;
+
+
+    if (stream) {
+
+      stream.getTracks().forEach(
+        track =>
+          track.stop()
+      );
+
+      stream = null;
+    }
+
+
+    startCamera.disabled =
+      false;
+
+    switchCamera.disabled =
+      true;
+
+    stopCamera.disabled =
+      true;
+
+
+    startCamera.click();
+  };
+
+
+/* =====================================================
+   STOP CAMERA
+===================================================== */
+
+stopCamera.onclick =
+  function () {
+
+    cameraRunning =
+      false;
+
+
+    if (stream) {
+
+      stream.getTracks().forEach(
+        track =>
+          track.stop()
+      );
+
+      stream = null;
+    }
+
+
+    camera.srcObject =
+      null;
+
+
+    camera.style.display =
+      "none";
+
+
+    ctx.clearRect(
+      0,
+      0,
+      canvas.width,
+      canvas.height
+    );
+
+
+    resetCounter();
+
+
+    cameraState.textContent =
+      "CAMERA ○";
+
+
+    startCamera.disabled =
+      false;
+
+    switchCamera.disabled =
+      true;
+
+    stopCamera.disabled =
+      true;
+
+
+    stage.textContent =
+      "STOPPED";
+
+    status.textContent =
+      "Camera stopped";
+  };
+
+
+/* =====================================================
+   VIDEO SELECT
+===================================================== */
+
+videoInput.onchange =
+  function () {
+
+    const file =
+      videoInput.files[0];
+
+
+    if (!file) {
+      return;
+    }
+
+
+    if (videoURL) {
+
+      URL.revokeObjectURL(
+        videoURL
+      );
+    }
+
+
+    videoURL =
+      URL.createObjectURL(file);
+
+
+    videoPlayer.src =
+      videoURL;
+
+
+    videoPlayer.load();
+
+
+    videoPlayer.style.display =
+      "block";
+
+
+    camera.style.display =
+      "none";
+
+
+    cameraRunning =
+      false;
+
+
+    if (stream) {
+
+      stream.getTracks().forEach(
+        track =>
+          track.stop()
+      );
+
+      stream = null;
+    }
+
+
+    camera.srcObject =
+      null;
+
+
+    resetCounter();
+
+
+    videoState.textContent =
+      "VIDEO ✓";
+
+
+    analyzeVideo.disabled =
+      false;
+
+
+    stage.textContent =
+      "VIDEO READY";
+
+
+    status.textContent =
+      "✅ VIDEO SELECTED";
+
+
+    videoPlayer.onloadedmetadata =
+      function () {
+
+        resizeCanvas();
+      };
+  };
+
+
+/* =====================================================
+   SEEK VIDEO
+===================================================== */
+
+function seekVideo(time) {
+
+  return new Promise(
+    resolve => {
+
+      if (
+        Math.abs(
+          videoPlayer.currentTime -
+          time
+        ) < 0.002
+      ) {
+
+        resolve();
+
+        return;
+      }
+
+
+      const handler =
+        function () {
+
+          videoPlayer.removeEventListener(
+            "seeked",
+            handler
+          );
+
+          resolve();
+        };
+
+
+      videoPlayer.addEventListener(
+        "seeked",
+        handler
+      );
+
+
+      videoPlayer.currentTime =
+        time;
+    }
+  );
+}
+
+
+/* =====================================================
+   ANALYZE VIDEO
+===================================================== */
+
+analyzeVideo.onclick =
+  async function () {
+
+    if (
+      !videoURL ||
+      analysing
+    ) {
+      return;
+    }
+
+
+    if (!aiReady) {
+
+      status.textContent =
+        "❌ AI NOT READY";
+
+      return;
+    }
+
+
+    analysing =
+      true;
+
+
+    analyzeVideo.disabled =
+      true;
+
+    sta

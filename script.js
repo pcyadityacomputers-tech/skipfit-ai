@@ -1,1608 +1,337 @@
-import {
-  FilesetResolver,
-  PoseLandmarker
-} from
-"https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/+esm";
-
-
-const MODEL =
-"https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task";
-
-const WASM =
-"https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/wasm";
-
-
-/* =========================
-   ELEMENTS
-========================= */
-
-const statusEl =
-document.getElementById("status");
-
-const camera =
-document.getElementById("camera");
-
-const fileVideo =
-document.getElementById("fileVideo");
-
-const videoFile =
-document.getElementById("videoFile");
-
-const analyzeBtn =
-document.getElementById("analyzeBtn");
-
-const canvas =
-document.getElementById("overlay");
-
-const ctx =
-canvas.getContext("2d");
-
-const startBtn =
-document.getElementById("startBtn");
-
-const switchBtn =
-document.getElementById("switchBtn");
-
-const calibrateBtn =
-document.getElementById("calibrateBtn");
-
-const stopBtn =
-document.getElementById("stopBtn");
-
-const stageEl =
-document.getElementById("stage");
-
-const calibrationEl =
-document.getElementById("calibrationCount");
-
-const barFill =
-document.getElementById("barFill");
-
-const skipEl =
-document.getElementById("skipCount");
-
-const headEl =
-document.getElementById("head");
-
-const handsEl =
-document.getElementById("hands");
-
-const legsEl =
-document.getElementById("legs");
-
-const videoProgress =
-document.getElementById("videoProgress");
-
-const progressBar =
-document.getElementById("progressBar");
-
-const progressText =
-document.getElementById("progressText");
-
-
-/* =========================
-   AI STATE
-========================= */
-
-let landmarker = null;
-
-let stream = null;
-
-let running = false;
-
-let calibrating = false;
-
-let confirmed = false;
-
-let cameraFacing = "user";
-
-let animationId = null;
-
-let lastDetection =
-0;
-
-
-/* =========================
-   COUNTING STATE
-========================= */
-
-let skips = 0;
-
-let calibrationJumps = 0;
-
-let calibrationSamples = [];
-
-let calibratedAmplitude = 0;
-
-let previousSignal = null;
-
-let signalHistory = [];
-
-let jumpState = "GROUND";
-
-let lastJumpTime = 0;
-
-
-/* =========================
-   LOAD AI
-========================= */
-
-async function loadAI() {
-
-  try {
-
-    statusEl.textContent =
-      "Loading AI engine...";
-
-    stageEl.textContent =
-      "AI LOADING";
-
-
-    const vision =
-      await FilesetResolver.forVisionTasks(
-        WASM
-      );
-
-
-    statusEl.textContent =
-      "Loading body model...";
-
-
-    landmarker =
-      await PoseLandmarker.createFromOptions(
-        vision,
-        {
-
-          baseOptions: {
-
-            modelAssetPath:
-              MODEL,
-
-            delegate:
-              "CPU"
-
-          },
-
-          runningMode:
-            "VIDEO",
-
-          numPoses:
-            1,
-
-          minPoseDetectionConfidence:
-            0.5,
-
-          minPosePresenceConfidence:
-            0.5,
-
-          minTrackingConfidence:
-            0.5
-
-        }
-      );
-
-
-    statusEl.textContent =
-      "✅ AI READY";
-
-    stageEl.textContent =
-      "READY";
-
-
-    startBtn.disabled =
-      false;
-
-    analyzeBtn.disabled =
-      false;
-
-
-  } catch(error) {
-
-    console.error(error);
-
-
-    statusEl.textContent =
-      "❌ AI ERROR: " +
-      error.message;
-
-    stageEl.textContent =
-      "AI FAILED";
-
-  }
-}
-
-
-loadAI();
-
-
-/* =========================
-   RESET COUNTER
-========================= */
-
-function resetCounter() {
-
-  skips = 0;
-
-  calibrationJumps = 0;
-
-  calibrationSamples = [];
-
-  calibratedAmplitude = 0;
-
-  previousSignal = null;
-
-  signalHistory = [];
-
-  jumpState =
-    "GROUND";
-
-  lastJumpTime = 0;
-
-
-  skipEl.textContent =
-    "0";
-
-  calibrationEl.textContent =
-    "0 / 5";
-
-  barFill.style.width =
-    "0%";
-}
-
-
-/* =========================
-   CAMERA
-========================= */
-
-async function startCamera() {
-
-  if (!landmarker) {
-
-    statusEl.textContent =
-      "AI is still loading.";
-
-    return;
-  }
-
-
-  stopCamera(false);
-
-
-  try {
-
-    statusEl.textContent =
-      "Opening camera...";
-
-
-    stream =
-      await navigator.mediaDevices.getUserMedia({
-
-        video: {
-
-          facingMode:
-            cameraFacing,
-
-          width: {
-            ideal: 640
-          },
-
-          height: {
-            ideal: 480
-          },
-
-          frameRate: {
-            ideal: 24,
-            max: 30
-          }
-
-        },
-
-        audio:
-          false
-
-      });
-
-
-    camera.srcObject =
-      stream;
-
-
-    camera.style.display =
-      "block";
-
-    fileVideo.style.display =
-      "none";
-
-
-    await camera.play();
-
-
-    running =
-      true;
-
-
-    resetCounter();
-
-
-    startBtn.disabled =
-      true;
-
-    switchBtn.disabled =
-      false;
-
-    stopBtn.disabled =
-      false;
-
-    calibrateBtn.disabled =
-      false;
-
-
-    stageEl.textContent =
-      "BODY DETECTION";
-
-
-    statusEl.textContent =
-      "Camera active — show your full body.";
-
-
-    resizeCanvas();
-
-
-    detectCameraLoop();
-
-
-  } catch(error) {
-
-    console.error(error);
-
-
-    statusEl.textContent =
-      "❌ Camera error: " +
-      error.message;
-
-    stageEl.textContent =
-      "CAMERA ERROR";
-
-  }
-}
-
-
-/* =========================
-   SWITCH CAMERA
-========================= */
-
-async function switchCamera() {
-
-  cameraFacing =
-    cameraFacing === "user"
-      ? "environment"
-      : "user";
-
-
-  await startCamera();
-}
-
-
-/* =========================
-   STOP
-========================= */
-
-function stopCamera(updateUI = true) {
-
-  running =
-    false;
-
-
-  if(animationId) {
-
-    cancelAnimationFrame(
-      animationId
-    );
-
-    animationId =
-      null;
-  }
-
-
-  if(stream) {
-
-    stream
-      .getTracks()
-      .forEach(
-        track =>
-          track.stop()
-      );
-
-    stream =
-      null;
-  }
-
-
-  camera.srcObject =
-    null;
-
-
-  if(updateUI) {
-
-    startBtn.disabled =
-      false;
-
-    switchBtn.disabled =
-      true;
-
-    stopBtn.disabled =
-      true;
-
-    calibrateBtn.disabled =
-      true;
-
-    stageEl.textContent =
-      "STOPPED";
-
-    statusEl.textContent =
-      "Camera stopped.";
-
-  }
-}
-
-
-/* =========================
-   CANVAS
-========================= */
-
-function resizeCanvas() {
-
-  const video =
-    camera.style.display !== "none"
-      ? camera
-      : fileVideo;
-
-
-  if(
-    video.videoWidth > 0 &&
-    video.videoHeight > 0
-  ) {
-
-    canvas.width =
-      video.videoWidth;
-
-    canvas.height =
-      video.videoHeight;
-  }
-}
-
-
-/* =========================
-   VISIBILITY
-========================= */
-
-function visible(p) {
-
-  return (
-
-    p &&
-
-    typeof p.x ===
-      "number" &&
-
-    typeof p.y ===
-      "number" &&
-
-    (
-      p.visibility ===
-      undefined ||
-
-      p.visibility >
-      0.45
-    )
-
-  );
-}
-
-
-/* =========================
-   BODY STATUS
-========================= */
-
-function bodyStatus(p) {
-
-  const head =
-    visible(p[0]);
-
-
-  const hands =
-    visible(p[15]) &&
-    visible(p[16]);
-
-
-  const legs =
-    visible(p[25]) &&
-    visible(p[26]) &&
-    visible(p[27]) &&
-    visible(p[28]);
-
-
-  headEl.textContent =
-    head
-      ? "HEAD ✓"
-      : "HEAD ○";
-
-
-  handsEl.textContent =
-    hands
-      ? "HANDS ✓"
-      : "HANDS ○";
-
-
-  legsEl.textContent =
-    legs
-      ? "LEGS ✓"
-      : "LEGS ○";
-
-
-  return {
-    head,
-    hands,
-    legs
-  };
-}
-
-
-/* =========================
-   MOVEMENT SIGNAL
-========================= */
-
-function getSignal(p) {
-
-  if(
-
-    !visible(p[23]) ||
-    !visible(p[24]) ||
-
-    !visible(p[25]) ||
-    !visible(p[26]) ||
-
-    !visible(p[27]) ||
-    !visible(p[28]) ||
-
-    !visible(p[15]) ||
-    !visible(p[16]) ||
-
-    !visible(p[0])
-
-  ) {
-
-    return null;
-  }
-
-
-  const ankle =
-    (
-      p[27].y +
-      p[28].y
-    ) / 2;
-
-
-  const hip =
-    (
-      p[23].y +
-      p[24].y
-    ) / 2;
-
-
-  const knee =
-    (
-      p[25].y +
-      p[26].y
-    ) / 2;
-
-
-  const hands =
-    (
-      p[15].y +
-      p[16].y
-    ) / 2;
-
-
-  return {
-
-    body:
-      ankle - hip,
-
-    knee:
-      knee - hip,
-
-    hands:
-      hands,
-
-    head:
-      p[0].y
-
-  };
-}
-
-
-/* =========================
-   SMOOTH
-========================= */
-
-function smooth(arr) {
-
-  if(
-    arr.length === 0
-  )
-    return 0;
-
-
-  const n =
-    Math.min(
-      7,
-      arr.length
-    );
-
-
-  let sum = 0;
-
-
-  for(
-    let i =
-      arr.length - n;
-
-    i <
-      arr.length;
-
-    i++
-  ) {
-
-    sum +=
-      arr[i];
-  }
-
-
-  return sum / n;
-}
-
-
-/* =========================
-   SMART JUMP DETECTOR
-========================= */
-
-function processSignal(
-  signal,
-  timestamp
-) {
-
-  signalHistory.push(
-    signal.body
-  );
-
-
-  if(
-    signalHistory.length >
-    30
-  ) {
-
-    signalHistory.shift();
-  }
-
-
-  if(
-    signalHistory.length <
-    8
-  ) {
-
-    return;
-  }
-
-
-  const current =
-    smooth(signalHistory);
-
-
-  if(
-    previousSignal ===
-    null
-  ) {
-
-    previousSignal =
-      current;
-
-    return;
-  }
-
-
-  const velocity =
-    current -
-    previousSignal;
-
-
-  const minimumAmplitude =
-    calibrating
-      ? 0.025
-      : Math.max(
-          0.025,
-          calibratedAmplitude *
-          0.35
-        );
-
-
-  const min =
-    Math.min(
-      ...signalHistory
-    );
-
-
-  const max =
-    Math.max(
-      ...signalHistory
-    );
-
-
-  const amplitude =
-    max - min;
-
-
-  const goingUp =
-    velocity <
-    -0.0018;
-
-
-  const goingDown =
-    velocity >
-    0.0018;
-
-
-  /*
-    UP phase
-  */
-
-  if(
-
-    jumpState ===
-      "GROUND" &&
-
-    goingUp &&
-
-    amplitude >
-      minimumAmplitude
-
-  ) {
-
-    jumpState =
-      "UP";
-  }
-
-
-  /*
-    DOWN phase =
-    completed jump
-  */
-
-  if(
-
-    jumpState ===
-      "UP" &&
-
-    goingDown
-
-  ) {
-
-    if(
-      timestamp -
-      lastJumpTime >
-      280
-    ) {
-
-      registerJump(
-        timestamp
-      );
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <title>SkipFit AI</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
     }
 
-
-    jumpState =
-      "GROUND";
-  }
-
-
-  previousSignal =
-    current;
-}
-
-
-/* =========================
-   REGISTER JUMP
-========================= */
-
-function registerJump(
-  timestamp
-) {
-
-  lastJumpTime =
-    timestamp;
-
-
-  if(
-    calibrating
-  ) {
-
-    calibrationSamples.push({
-
-      time:
-        timestamp,
-
-      value:
-        smooth(
-          signalHistory
-        )
-
-    });
-
-
-    calibrationJumps++;
-
-
-    calibrationEl.textContent =
-      calibrationJumps +
-      " / 5";
-
-
-    barFill.style.width =
-      (
-        calibrationJumps *
-        20
-      ) + "%";
-
-
-    stageEl.textContent =
-      "CALIBRATING " +
-      calibrationJumps +
-      " / 5";
-
-
-    if(
-      calibrationJumps >=
-      5
-    ) {
-
-      finishCalibration();
+    body {
+      margin: 0;
+      background: #0b0f14;
+      color: white;
+      font-family: Arial, sans-serif;
     }
 
-
-    return;
-  }
-
-
-  if(
-    !confirmed
-  )
-    return;
-
-
-  skips++;
-
-
-  skipEl.textContent =
-    skips.toLocaleString();
-
-
-  stageEl.textContent =
-    "SKIPPING • " +
-    skips.toLocaleString();
-}
-
-
-/* =========================
-   CALIBRATION
-========================= */
-
-function finishCalibration() {
-
-  calibrating =
-    false;
-
-
-  const values =
-    calibrationSamples.map(
-      x => x.value
-    );
-
-
-  if(
-    values.length
-  ) {
-
-    const max =
-      Math.max(
-        ...values
-      );
-
-    const min =
-      Math.min(
-        ...values
-      );
-
-
-    calibratedAmplitude =
-      Math.max(
-        0.04,
-        max - min
-      );
-  }
-
-
-  confirmed =
-    true;
-
-
-  calibrateBtn.disabled =
-    true;
-
-
-  stageEl.textContent =
-    "✓ PATTERN CONFIRMED";
-
-
-  statusEl.textContent =
-    "Calibration complete. AI is counting skips.";
-}
-
-
-/* =========================
-   START CALIBRATION
-========================= */
-
-function startCalibration() {
-
-  if(
-    !running
-  )
-    return;
-
-
-  calibrating =
-    true;
-
-  confirmed =
-    false;
-
-
-  calibrationJumps =
-    0;
-
-
-  calibrationSamples =
-    [];
-
-
-  previousSignal =
-    null;
-
-
-  signalHistory =
-    [];
-
-
-  jumpState =
-    "GROUND";
-
-
-  calibrationEl.textContent =
-    "0 / 5";
-
-
-  barFill.style.width =
-    "0%";
-
-
-  stageEl.textContent =
-    "JUMP 5 TIMES";
-
-
-  statusEl.textContent =
-    "Make five controlled jumps.";
-}
-
-
-/* =========================
-   DRAW BODY
-========================= */
-
-function drawSkeleton(
-  points
-) {
-
-  ctx.clearRect(
-    0,
-    0,
-    canvas.width,
-    canvas.height
-  );
-
-
-  const links = [
-
-    [11,12],
-
-    [11,13],
-    [13,15],
-
-    [12,14],
-    [14,16],
-
-    [11,23],
-    [12,24],
-
-    [23,24],
-
-    [23,25],
-    [25,27],
-
-    [24,26],
-    [26,28]
-
-  ];
-
-
-  ctx.lineWidth =
-    3;
-
-  ctx.strokeStyle =
-    "#36a9ff";
-
-
-  for(
-    const [a,b]
-    of links
-  ) {
-
-    if(
-      !visible(points[a]) ||
-      !visible(points[b])
-    )
-      continue;
-
-
-    ctx.beginPath();
-
-
-    ctx.moveTo(
-      points[a].x *
-      canvas.width,
-
-      points[a].y *
-      canvas.height
-    );
-
-
-    ctx.lineTo(
-      points[b].x *
-      canvas.width,
-
-      points[b].y *
-      canvas.height
-    );
-
-
-    ctx.stroke();
-  }
-
-
-  ctx.fillStyle =
-    "#ffffff";
-
-
-  for(
-    const p of points
-  ) {
-
-    if(
-      !visible(p)
-    )
-      continue;
-
-
-    ctx.beginPath();
-
-
-    ctx.arc(
-
-      p.x *
-      canvas.width,
-
-      p.y *
-      canvas.height,
-
-      4,
-
-      0,
-
-      Math.PI * 2
-
-    );
-
-
-    ctx.fill();
-  }
-}
-
-
-/* =========================
-   CAMERA AI LOOP
-========================= */
-
-function detectCameraLoop() {
-
-  if(
-    !running
-  )
-    return;
-
-
-  const now =
-    performance.now();
-
-
-  if(
-    now -
-    lastDetection <
-    65
-  ) {
-
-    animationId =
-      requestAnimationFrame(
-        detectCameraLoop
-      );
-
-    return;
-  }
-
-
-  lastDetection =
-    now;
-
-
-  try {
-
-    resizeCanvas();
-
-
-    const result =
-      landmarker.detectForVideo(
-        camera,
-        now
-      );
-
-
-    processResult(
-      result,
-      now
-    );
-
-
-  } catch(error) {
-
-    console.error(
-      error
-    );
-
-  }
-
-
-  animationId =
-    requestAnimationFrame(
-      detectCameraLoop
-    );
-}
-
-
-/* =========================
-   PROCESS RESULT
-========================= */
-
-function processResult(
-  result,
-  timestamp
-) {
-
-  if(
-
-    !result.landmarks ||
-
-    !result.landmarks.length
-
-  ) {
-
-    stageEl.textContent =
-      "NO BODY DETECTED";
-
-    return;
-  }
-
-
-  const points =
-    result.landmarks[0];
-
-
-  drawSkeleton(
-    points
-  );
-
-
-  const body =
-    bodyStatus(
-      points
-    );
-
-
-  if(
-
-    !body.head ||
-    !body.hands ||
-    !body.legs
-
-  ) {
-
-    if(
-      !calibrating &&
-      !confirmed
-    ) {
-
-      stageEl.textContent =
-        "FULL BODY REQUIRED";
+    header {
+      text-align: center;
+      padding: 20px 10px;
+      border-bottom: 1px solid #222;
     }
 
-
-    return;
-  }
-
-
-  if(
-    !calibrating &&
-    !confirmed
-  ) {
-
-    stageEl.textContent =
-      "BODY DETECTED ✓";
-  }
-
-
-  const signal =
-    getSignal(
-      points
-    );
-
-
-  if(
-    signal
-  ) {
-
-    processSignal(
-      signal,
-      timestamp
-    );
-  }
-}
-
-
-/* =========================
-   VIDEO FILE
-========================= */
-
-let selectedVideoURL =
-  null;
-
-
-videoFile.addEventListener(
-  "change",
-  () => {
-
-    const file =
-      videoFile.files[0];
-
-
-    if(!file)
-      return;
-
-
-    if(
-      selectedVideoURL
-    ) {
-
-      URL.revokeObjectURL(
-        selectedVideoURL
-      );
+    header h1 {
+      margin: 0;
+      font-size: 30px;
     }
 
-
-    selectedVideoURL =
-      URL.createObjectURL(
-        file
-      );
-
-
-    fileVideo.src =
-      selectedVideoURL;
-
-
-    fileVideo.style.display =
-      "block";
-
-    camera.style.display =
-      "none";
-
-
-    analyzeBtn.disabled =
-      false;
-
-
-    stageEl.textContent =
-      "VIDEO READY";
-
-
-    statusEl.textContent =
-      "Video selected. Press ANALYZE VIDEO.";
-
-  }
-);
-
-
-/* =========================
-   ANALYZE VIDEO
-========================= */
-
-async function analyzeVideo() {
-
-  const file =
-    videoFile.files[0];
-
-
-  if(
-    !file ||
-    !landmarker
-  )
-    return;
-
-
-  stopCamera(
-    false
-  );
-
-
-  resetCounter();
-
-
-  confirmed =
-    true;
-
-
-  calibrating =
-    false;
-
-
-  videoProgress.style.display =
-    "block";
-
-
-  analyzeBtn.disabled =
-    true;
-
-
-  startBtn.disabled =
-    true;
-
-
-  switchBtn.disabled =
-    true;
-
-
-  stopBtn.disabled =
-    false;
-
-
-  fileVideo.style.display =
-    "block";
-
-
-  camera.style.display =
-    "none";
-
-
-  await fileVideo.play();
-
-
-  resizeCanvas();
-
-
-  stageEl.textContent =
-    "ANALYZING VIDEO";
-
-
-  statusEl.textContent =
-    "AI is processing the video frame-by-frame.";
-
-
-  const fps =
-    15;
-
-
-  const interval =
-    1000 / fps;
-
-
-  let time =
-    0;
-
-
-  while(
-    time <
-    fileVideo.duration
-  ) {
-
-    fileVideo.currentTime =
-      time;
-
-
-    await waitForSeek();
-
-
-    const timestamp =
-      time * 1000;
-
-
-    try {
-
-      const result =
-        landmarker.detectForVideo(
-          fileVideo,
-          timestamp
-        );
-
-
-      processResult(
-        result,
-        timestamp
-      );
-
-    } catch(error) {
-
-      console.error(
-        error
-      );
-
+    header p {
+      margin: 6px 0;
+      opacity: .8;
     }
 
+    header small {
+      opacity: .6;
+    }
 
-    const percent =
-      (
-        time /
-        fileVideo.duration
-      ) * 100;
+    main {
+      max-width: 700px;
+      margin: auto;
+      padding: 15px;
+    }
 
+    .card {
+      background: #121820;
+      border-radius: 18px;
+      padding: 15px;
+      box-shadow: 0 8px 30px rgba(0,0,0,.3);
+    }
 
-    progressBar.value =
-      percent;
+    #status {
+      text-align: center;
+      padding: 10px;
+      margin-bottom: 12px;
+      border-radius: 10px;
+      background: #18212b;
+      font-size: 14px;
+    }
 
+    .video-box {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      background: #000;
+      border-radius: 14px;
+      overflow: hidden;
+    }
 
-    progressText.textContent =
-      Math.round(
-        percent
-      ) + "%";
+    video,
+    canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
 
+    #camera {
+      display: none;
+    }
 
-    time +=
-      1 / fps;
+    #fileVideo {
+      display: none;
+    }
 
+    .info {
+      display: flex;
+      justify-content: space-around;
+      gap: 6px;
+      margin: 12px 0;
+    }
 
-    await new Promise(
-      resolve =>
-        setTimeout(
-          resolve,
-          interval
-        )
-    );
-  }
+    .info div {
+      flex: 1;
+      text-align: center;
+      padding: 10px 4px;
+      background: #18212b;
+      border-radius: 10px;
+      font-size: 12px;
+    }
 
+    .ok {
+      color: #65ff9b;
+    }
 
-  fileVideo.pause();
+    .bad {
+      color: #ff7373;
+    }
 
+    .stage {
+      text-align: center;
+      font-size: 15px;
+      font-weight: bold;
+      margin: 12px 0;
+    }
 
-  analyzeBtn.disabled =
-    false;
+    .count-title {
+      text-align: center;
+      opacity: .6;
+      font-size: 14px;
+    }
 
+    #skipCount {
+      text-align: center;
+      font-size: 64px;
+      font-weight: bold;
+      margin: 3px 0 15px;
+    }
 
-  startBtn.disabled =
-    false;
+    .buttons {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
 
+    button,
+    label.file-button {
+      width: 100%;
+      border: 0;
+      border-radius: 12px;
+      padding: 14px;
+      font-size: 15px;
+      font-weight: bold;
+      background: #263341;
+      color: white;
+      text-align: center;
+      cursor: pointer;
+    }
 
-  stopBtn.disabled =
-    true;
+    button:disabled {
+      opacity: .4;
+    }
 
+    input[type="file"] {
+      display: none;
+    }
 
-  videoProgress.style.display =
-    "none";
+    .primary {
+      background: #1677ff !important;
+    }
 
+    .danger {
+      background: #8e3030 !important;
+    }
 
-  stageEl.textContent =
-    "✓ VIDEO COMPLETE";
+    .progress-box {
+      margin-top: 14px;
+    }
 
+    progress {
+      width: 100%;
+      height: 12px;
+    }
 
-  statusEl.textContent =
-    "Video analysis finished. Detected skips: " +
-    skips.toLocaleString();
-}
+    .help {
+      margin-top: 18px;
+      padding: 12px;
+      background: #18212b;
+      border-radius: 12px;
+      line-height: 1.5;
+      font-size: 13px;
+      opacity: .85;
+    }
 
-
-/* =========================
-   WAIT FOR VIDEO SEEK
-========================= */
-
-function waitForSeek() {
-
-  return new Promise(
-    resolve => {
-
-      if(
-        !fileVideo.seeking
-      ) {
-
-        resolve();
-
-        return;
+    @media(max-width:500px) {
+      #skipCount {
+        font-size: 52px;
       }
 
-
-      const done =
-        () => {
-
-          fileVideo.removeEventListener(
-            "seeked",
-            done
-          );
-
-          resolve();
-        };
-
-
-      fileVideo.addEventListener(
-        "seeked",
-        done
-      );
-
+      .buttons {
+        grid-template-columns: 1fr;
+      }
     }
-  );
-}
+  </style>
+</head>
 
+<body>
 
-/* =========================
-   BUTTON EVENTS
-========================= */
+<header>
+  <h1>SkipFit AI</h1>
+  <p>By Aditya Kumar Yadav</p>
+  <small>AI Skipping Counter</small>
+</header>
 
-startBtn.addEventListener(
-  "click",
-  startCamera
-);
+<main>
 
+  <section class="card">
 
-switchBtn.addEventListener(
-  "click",
-  switchCamera
-);
+    <div id="status">
+      Starting AI...
+    </div>
 
+    <div class="video-box">
 
-stopBtn.addEventListener(
-  "click",
-  () =>
-    stopCamera(true)
-);
+      <video
+        id="camera"
+        autoplay
+        muted
+        playsinline>
+      </video>
 
+      <video
+        id="fileVideo"
+        muted
+        playsinline>
+      </video>
 
-calibrateBtn.addEventListener(
-  "click",
-  startCalibration
-);
+      <canvas id="overlay"></canvas>
 
+    </div>
 
-analyzeBtn.addEventListener(
-  "click",
-  analyzeVideo
-);
+    <div class="info">
+
+      <div id="head">
+        HEAD ○
+      </div>
+
+      <div id="hands">
+        HANDS ○
+      </div>
+
+      <div id="legs">
+        LEGS ○
+      </div>
+
+    </div>
+
+    <div id="stage" class="stage">
+      AI STARTING
+    </div>
+
+    <div class="count-title">
+      SKIPS
+    </div>
+
+    <div id="skipCount">
+      0
+    </div>
+
+    <div class="buttons">
+
+      <button
+        id="startBtn"
+        class="primary">
+        📷 START CAMERA
+      </button>
+
+      <button
+        id="switchBtn"
+        disabled>
+        🔄 SWITCH CAMERA
+      </button>
+
+      <button
+        id="stopBtn"
+        class="danger"
+        disabled>
+        ⛔ STOP
+      </button>
+
+      <label
+        for="videoFile"
+        class="file-button">
+        📁 CHOOSE VIDEO
+      </label>
+
+      <input
+        id="videoFile"
+        type="file"
+        accept="video/*">
+
+      <button
+        id="analyzeBtn"
+        class="primary"
+        disabled>
+        🧠 ANALYZE VIDEO
+      </button>
+
+    </div>
+
+    <div class="progress-box">
+      <progress
+        id="progressBar"
+        value="0"
+        max="100">
+      </progress>
+    </div>
+
+    <div class="help">
+
+      <b>Camera mode</b>
+      <br>
+      Keep your full body visible. Start the camera and make 5 normal jumps for calibration.
+
+      <br><br>
+
+      <b>Video mode</b>
+      <br>
+      Choose a real video containing skipping. Then press ANALYZE VIDEO.
+
+      <br><br>
+
+      The AI first looks for the body using head, hands and legs, then analyzes movement frame by frame.
+
+    </div>
+
+  </section>
+
+</main>
+
+<script type="module" src="script.js"></script>
+
+</body>
+</html>

@@ -1,337 +1,724 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+import {
+  FilesetResolver,
+  PoseLandmarker
+} from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/+esm";
 
-  <title>SkipFit AI</title>
 
-  <style>
-    * {
-      box-sizing: border-box;
-    }
+/* =========================
+   ELEMENTS
+========================= */
 
-    body {
-      margin: 0;
-      background: #0b0f14;
-      color: white;
-      font-family: Arial, sans-serif;
-    }
+const camera =
+  document.getElementById("camera");
 
-    header {
-      text-align: center;
-      padding: 20px 10px;
-      border-bottom: 1px solid #222;
-    }
+const videoPlayer =
+  document.getElementById("videoFilePlayer");
 
-    header h1 {
-      margin: 0;
-      font-size: 30px;
-    }
+const videoInput =
+  document.getElementById("videoInput");
 
-    header p {
-      margin: 6px 0;
-      opacity: .8;
-    }
+const canvas =
+  document.getElementById("canvas");
 
-    header small {
-      opacity: .6;
-    }
+const ctx =
+  canvas.getContext("2d");
 
-    main {
-      max-width: 700px;
-      margin: auto;
-      padding: 15px;
-    }
+const status =
+  document.getElementById("status");
 
-    .card {
-      background: #121820;
-      border-radius: 18px;
-      padding: 15px;
-      box-shadow: 0 8px 30px rgba(0,0,0,.3);
-    }
+const stage =
+  document.getElementById("stage");
 
-    #status {
-      text-align: center;
-      padding: 10px;
-      margin-bottom: 12px;
-      border-radius: 10px;
-      background: #18212b;
-      font-size: 14px;
-    }
+const count =
+  document.getElementById("count");
 
-    .video-box {
-      position: relative;
-      width: 100%;
-      aspect-ratio: 16 / 9;
-      background: #000;
-      border-radius: 14px;
-      overflow: hidden;
-    }
+const progress =
+  document.getElementById("progress");
 
-    video,
-    canvas {
-      position: absolute;
-      inset: 0;
-      width: 100%;
-      height: 100%;
-      object-fit: contain;
-    }
+const startCamera =
+  document.getElementById("startCamera");
 
-    #camera {
-      display: none;
-    }
+const switchCamera =
+  document.getElementById("switchCamera");
 
-    #fileVideo {
-      display: none;
-    }
+const stopCamera =
+  document.getElementById("stopCamera");
 
-    .info {
-      display: flex;
-      justify-content: space-around;
-      gap: 6px;
-      margin: 12px 0;
-    }
+const analyzeVideo =
+  document.getElementById("analyzeVideo");
 
-    .info div {
-      flex: 1;
-      text-align: center;
-      padding: 10px 4px;
-      background: #18212b;
-      border-radius: 10px;
-      font-size: 12px;
-    }
+const cameraState =
+  document.getElementById("cameraState");
 
-    .ok {
-      color: #65ff9b;
-    }
+const videoState =
+  document.getElementById("videoState");
 
-    .bad {
-      color: #ff7373;
-    }
+const aiState =
+  document.getElementById("aiState");
 
-    .stage {
-      text-align: center;
-      font-size: 15px;
-      font-weight: bold;
-      margin: 12px 0;
-    }
 
-    .count-title {
-      text-align: center;
-      opacity: .6;
-      font-size: 14px;
-    }
+/* =========================
+   VARIABLES
+========================= */
 
-    #skipCount {
-      text-align: center;
-      font-size: 64px;
-      font-weight: bold;
-      margin: 3px 0 15px;
-    }
+let stream = null;
 
-    .buttons {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 10px;
-    }
+let facing = "user";
 
-    button,
-    label.file-button {
-      width: 100%;
-      border: 0;
-      border-radius: 12px;
-      padding: 14px;
-      font-size: 15px;
-      font-weight: bold;
-      background: #263341;
-      color: white;
-      text-align: center;
-      cursor: pointer;
-    }
+let videoURL = null;
 
-    button:disabled {
-      opacity: .4;
-    }
+let landmarker = null;
 
-    input[type="file"] {
-      display: none;
-    }
+let aiReady = false;
 
-    .primary {
-      background: #1677ff !important;
-    }
+let cameraRunning = false;
 
-    .danger {
-      background: #8e3030 !important;
-    }
+let analysing = false;
 
-    .progress-box {
-      margin-top: 14px;
-    }
 
-    progress {
-      width: 100%;
-      height: 12px;
-    }
+/* =========================
+   AI LOADING
+   IMPORTANT:
+   AI DOES NOT BLOCK CAMERA
+========================= */
 
-    .help {
-      margin-top: 18px;
-      padding: 12px;
-      background: #18212b;
-      border-radius: 12px;
-      line-height: 1.5;
-      font-size: 13px;
-      opacity: .85;
-    }
+async function loadAI(){
 
-    @media(max-width:500px) {
-      #skipCount {
-        font-size: 52px;
+  try{
+
+    status.textContent =
+      "Loading AI...";
+
+    const vision =
+      await FilesetResolver.forVisionTasks(
+        "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/wasm"
+      );
+
+    landmarker =
+      await PoseLandmarker.createFromOptions(
+        vision,
+        {
+          baseOptions:{
+            modelAssetPath:
+              "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
+
+            delegate:"CPU"
+          },
+
+          runningMode:"VIDEO",
+
+          numPoses:1,
+
+          minPoseDetectionConfidence:.35,
+
+          minPosePresenceConfidence:.35,
+
+          minTrackingConfidence:.35
+        }
+      );
+
+    aiReady = true;
+
+    aiState.textContent =
+      "AI ✓";
+
+    status.textContent =
+      "✅ AI READY";
+
+    console.log(
+      "SkipFit AI ready"
+    );
+
+  }catch(error){
+
+    console.error(
+      "AI ERROR:",
+      error
+    );
+
+    aiState.textContent =
+      "AI ✕";
+
+    /*
+      IMPORTANT:
+      Camera and video upload
+      still work even if AI fails.
+    */
+
+    status.textContent =
+      "Camera/video ready — AI unavailable";
+
+  }
+}
+
+
+/* =========================
+   CAMERA
+========================= */
+
+startCamera.onclick =
+  async function(){
+
+    try{
+
+      if(!navigator.mediaDevices ||
+         !navigator.mediaDevices.getUserMedia){
+
+        status.textContent =
+          "Camera API unavailable";
+
+        return;
       }
 
-      .buttons {
-        grid-template-columns: 1fr;
+      if(stream){
+
+        stream.getTracks()
+          .forEach(
+            track => track.stop()
+          );
       }
+
+      status.textContent =
+        "Requesting camera...";
+
+      stream =
+        await navigator.mediaDevices.getUserMedia({
+
+          video:{
+            facingMode:facing,
+
+            width:{
+              ideal:640
+            },
+
+            height:{
+              ideal:480
+            }
+          },
+
+          audio:false
+        });
+
+      camera.srcObject =
+        stream;
+
+      camera.style.display =
+        "block";
+
+      videoPlayer.style.display =
+        "none";
+
+      await camera.play();
+
+      cameraRunning = true;
+
+      cameraState.textContent =
+        "CAMERA ✓";
+
+      startCamera.disabled =
+        true;
+
+      switchCamera.disabled =
+        false;
+
+      stopCamera.disabled =
+        false;
+
+      stage.textContent =
+        "CAMERA ACTIVE";
+
+      status.textContent =
+        "📷 CAMERA WORKING";
+
+      resizeCanvas();
+
+      cameraLoop();
+
+    }catch(error){
+
+      console.error(error);
+
+      status.textContent =
+        "❌ CAMERA ERROR: " +
+        error.name;
+
+      stage.textContent =
+        "CAMERA FAILED";
     }
-  </style>
-</head>
+  };
 
-<body>
 
-<header>
-  <h1>SkipFit AI</h1>
-  <p>By Aditya Kumar Yadav</p>
-  <small>AI Skipping Counter</small>
-</header>
+/* =========================
+   SWITCH CAMERA
+========================= */
 
-<main>
+switchCamera.onclick =
+  async function(){
 
-  <section class="card">
+    facing =
+      facing === "user"
+        ? "environment"
+        : "user";
 
-    <div id="status">
-      Starting AI...
-    </div>
+    if(stream){
 
-    <div class="video-box">
+      stream.getTracks()
+        .forEach(
+          track => track.stop()
+        );
+    }
 
-      <video
-        id="camera"
-        autoplay
-        muted
-        playsinline>
-      </video>
+    stream = null;
 
-      <video
-        id="fileVideo"
-        muted
-        playsinline>
-      </video>
+    startCamera.disabled =
+      false;
 
-      <canvas id="overlay"></canvas>
+    startCamera.click();
+  };
 
-    </div>
 
-    <div class="info">
+/* =========================
+   STOP CAMERA
+========================= */
 
-      <div id="head">
-        HEAD ○
-      </div>
+stopCamera.onclick =
+  function(){
 
-      <div id="hands">
-        HANDS ○
-      </div>
+    cameraRunning = false;
 
-      <div id="legs">
-        LEGS ○
-      </div>
+    if(stream){
 
-    </div>
+      stream.getTracks()
+        .forEach(
+          track => track.stop()
+        );
 
-    <div id="stage" class="stage">
-      AI STARTING
-    </div>
+      stream = null;
+    }
 
-    <div class="count-title">
-      SKIPS
-    </div>
+    camera.srcObject = null;
 
-    <div id="skipCount">
-      0
-    </div>
+    camera.style.display =
+      "none";
 
-    <div class="buttons">
+    cameraState.textContent =
+      "CAMERA ○";
 
-      <button
-        id="startBtn"
-        class="primary">
-        📷 START CAMERA
-      </button>
+    startCamera.disabled =
+      false;
 
-      <button
-        id="switchBtn"
-        disabled>
-        🔄 SWITCH CAMERA
-      </button>
+    switchCamera.disabled =
+      true;
 
-      <button
-        id="stopBtn"
-        class="danger"
-        disabled>
-        ⛔ STOP
-      </button>
+    stopCamera.disabled =
+      true;
 
-      <label
-        for="videoFile"
-        class="file-button">
-        📁 CHOOSE VIDEO
-      </label>
+    stage.textContent =
+      "STOPPED";
 
-      <input
-        id="videoFile"
-        type="file"
-        accept="video/*">
+    status.textContent =
+      "Camera stopped";
+  };
 
-      <button
-        id="analyzeBtn"
-        class="primary"
-        disabled>
-        🧠 ANALYZE VIDEO
-      </button>
 
-    </div>
+/* =========================
+   CANVAS
+========================= */
 
-    <div class="progress-box">
-      <progress
-        id="progressBar"
-        value="0"
-        max="100">
-      </progress>
-    </div>
+function resizeCanvas(){
 
-    <div class="help">
+  if(camera.videoWidth){
 
-      <b>Camera mode</b>
-      <br>
-      Keep your full body visible. Start the camera and make 5 normal jumps for calibration.
+    canvas.width =
+      camera.videoWidth;
 
-      <br><br>
+    canvas.height =
+      camera.videoHeight;
+  }
 
-      <b>Video mode</b>
-      <br>
-      Choose a real video containing skipping. Then press ANALYZE VIDEO.
+  else if(videoPlayer.videoWidth){
 
-      <br><br>
+    canvas.width =
+      videoPlayer.videoWidth;
 
-      The AI first looks for the body using head, hands and legs, then analyzes movement frame by frame.
+    canvas.height =
+      videoPlayer.videoHeight;
+  }
+}
 
-    </div>
 
-  </section>
+/* =========================
+   CAMERA AI LOOP
+========================= */
 
-</main>
+let lastProcess = 0;
 
-<script type="module" src="script.js"></script>
 
-</body>
-</html>
+function cameraLoop(){
+
+  if(!cameraRunning)
+    return;
+
+  requestAnimationFrame(
+    cameraLoop
+  );
+
+  if(!aiReady)
+    return;
+
+  if(camera.readyState < 2)
+    return;
+
+  const now =
+    performance.now();
+
+  if(now-lastProcess < 80)
+    return;
+
+  lastProcess = now;
+
+  try{
+
+    resizeCanvas();
+
+    const result =
+      landmarker.detectForVideo(
+        camera,
+        now
+      );
+
+    drawPose(
+      result
+    );
+
+  }catch(error){
+
+    console.error(
+      "Camera AI:",
+      error
+    );
+  }
+}
+
+
+/* =========================
+   DRAW BODY
+========================= */
+
+function drawPose(result){
+
+  ctx.clearRect(
+    0,
+    0,
+    canvas.width,
+    canvas.height
+  );
+
+  if(
+    !result ||
+    !result.landmarks ||
+    !result.landmarks.length
+  ){
+
+    stage.textContent =
+      aiReady
+        ? "BODY NOT FOUND"
+        : "CAMERA ACTIVE";
+
+    return;
+  }
+
+  const points =
+    result.landmarks[0];
+
+  stage.textContent =
+    "BODY DETECTED";
+
+  ctx.fillStyle =
+    "#00ff88";
+
+  for(
+    const p of points
+  ){
+
+    if(
+      p.visibility !== undefined &&
+      p.visibility < .25
+    )
+      continue;
+
+    ctx.beginPath();
+
+    ctx.arc(
+      p.x * canvas.width,
+      p.y * canvas.height,
+      4,
+      0,
+      Math.PI*2
+    );
+
+    ctx.fill();
+  }
+}
+
+
+/* =========================
+   VIDEO FILE
+========================= */
+
+videoInput.onchange =
+  function(){
+
+    const file =
+      videoInput.files[0];
+
+    if(!file)
+      return;
+
+    if(videoURL){
+
+      URL.revokeObjectURL(
+        videoURL
+      );
+    }
+
+    videoURL =
+      URL.createObjectURL(
+        file
+      );
+
+    videoPlayer.src =
+      videoURL;
+
+    videoPlayer.load();
+
+    videoPlayer.style.display =
+      "block";
+
+    camera.style.display =
+      "none";
+
+    videoState.textContent =
+      "VIDEO ✓";
+
+    analyzeVideo.disabled =
+      false;
+
+    stage.textContent =
+      "VIDEO READY";
+
+    status.textContent =
+      "✅ VIDEO SELECTED";
+
+    progress.value = 0;
+
+    console.log(
+      "Selected:",
+      file.name,
+      file.size,
+      file.type
+    );
+  };
+
+
+/* =========================
+   ANALYZE VIDEO
+========================= */
+
+analyzeVideo.onclick =
+  async function(){
+
+    if(!videoURL)
+      return;
+
+    if(analyzing)
+      return;
+
+    analysing = true;
+
+    analyzeVideo.disabled =
+      true;
+
+    startCamera.disabled =
+      true;
+
+    status.textContent =
+      aiReady
+        ? "🧠 ANALYZING VIDEO..."
+        : "Video loaded — AI unavailable";
+
+    stage.textContent =
+      aiReady
+        ? "FRAME ANALYSIS"
+        : "VIDEO READY";
+
+    try{
+
+      await new Promise(
+        resolve => {
+
+          if(
+            videoPlayer.readyState >= 1
+          ){
+
+            resolve();
+
+          }else{
+
+            videoPlayer.addEventListener(
+              "loadedmetadata",
+              resolve,
+              {once:true}
+            );
+          }
+        }
+      );
+
+
+      if(!aiReady){
+
+        status.textContent =
+          "Video works, but AI did not load.";
+
+        stage.textContent =
+          "AI UNAVAILABLE";
+
+        return;
+      }
+
+
+      const duration =
+        videoPlayer.duration;
+
+      if(
+        !duration ||
+        !isFinite(duration)
+      ){
+
+        throw new Error(
+          "Could not read video duration"
+        );
+      }
+
+
+      const fps = 12;
+
+      const step =
+        1 / fps;
+
+      let frame = 0;
+
+      const total =
+        Math.ceil(
+          duration * fps
+        );
+
+
+      for(
+        let time=0;
+        time<duration;
+        time+=step
+      ){
+
+        videoPlayer.currentTime =
+          time;
+
+
+        await new Promise(
+          resolve => {
+
+            if(
+              !videoPlayer.seeking
+            ){
+
+              resolve();
+
+            }else{
+
+              videoPlayer.addEventListener(
+                "seeked",
+                resolve,
+                {once:true}
+              );
+            }
+          }
+        );
+
+
+        const result =
+          landmarker.detectForVideo(
+            videoPlayer,
+            performance.now()
+          );
+
+
+        drawPose(
+          result
+        );
+
+
+        frame++;
+
+
+        progress.value =
+          Math.round(
+            frame / total * 100
+          );
+
+
+        stage.textContent =
+          "ANALYZING " +
+          progress.value +
+          "%";
+
+
+        /*
+          Let the phone breathe.
+        */
+
+        if(frame % 8 === 0){
+
+          await new Promise(
+            r => setTimeout(r,0)
+          );
+        }
+      }
+
+
+      videoPlayer.pause();
+
+      stage.textContent =
+        "✓ VIDEO ANALYZED";
+
+      status.textContent =
+        "AI frame analysis complete";
+
+    }catch(error){
+
+      console.error(error);
+
+      status.textContent =
+        "❌ VIDEO ERROR";
+
+      stage.textContent =
+        error.message;
+    }
+
+    finally{
+
+      analysing = false;
+
+      analyzeVideo.disabled =
+        false;
+
+      startCamera.disabled =
+        false;
+    }
+  };
+
+
+/* =========================
+   START AI
+========================= */
+
+loadAI();

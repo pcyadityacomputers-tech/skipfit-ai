@@ -1,13 +1,200 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport"
-      content="width=device-width,initial-scale=1.0">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<title>SkipFit AI</title>
+  <title>SkipFit AI</title>
 
-<link rel="stylesheet" href="style.css">
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: #0b0f14;
+      color: white;
+      font-family: Arial, sans-serif;
+    }
+
+    header {
+      text-align: center;
+      padding: 20px 10px;
+      border-bottom: 1px solid #222;
+    }
+
+    header h1 {
+      margin: 0;
+      font-size: 30px;
+    }
+
+    header p {
+      margin: 6px 0;
+      opacity: .8;
+    }
+
+    header small {
+      opacity: .6;
+    }
+
+    main {
+      max-width: 700px;
+      margin: auto;
+      padding: 15px;
+    }
+
+    .card {
+      background: #121820;
+      border-radius: 18px;
+      padding: 15px;
+      box-shadow: 0 8px 30px rgba(0,0,0,.3);
+    }
+
+    #status {
+      text-align: center;
+      padding: 10px;
+      margin-bottom: 12px;
+      border-radius: 10px;
+      background: #18212b;
+      font-size: 14px;
+    }
+
+    .video-box {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      background: #000;
+      border-radius: 14px;
+      overflow: hidden;
+    }
+
+    video,
+    canvas {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+
+    #camera {
+      display: none;
+    }
+
+    #fileVideo {
+      display: none;
+    }
+
+    .info {
+      display: flex;
+      justify-content: space-around;
+      gap: 6px;
+      margin: 12px 0;
+    }
+
+    .info div {
+      flex: 1;
+      text-align: center;
+      padding: 10px 4px;
+      background: #18212b;
+      border-radius: 10px;
+      font-size: 12px;
+    }
+
+    .ok {
+      color: #65ff9b;
+    }
+
+    .bad {
+      color: #ff7373;
+    }
+
+    .stage {
+      text-align: center;
+      font-size: 15px;
+      font-weight: bold;
+      margin: 12px 0;
+    }
+
+    .count-title {
+      text-align: center;
+      opacity: .6;
+      font-size: 14px;
+    }
+
+    #skipCount {
+      text-align: center;
+      font-size: 64px;
+      font-weight: bold;
+      margin: 3px 0 15px;
+    }
+
+    .buttons {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    button,
+    label.file-button {
+      width: 100%;
+      border: 0;
+      border-radius: 12px;
+      padding: 14px;
+      font-size: 15px;
+      font-weight: bold;
+      background: #263341;
+      color: white;
+      text-align: center;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      opacity: .4;
+    }
+
+    input[type="file"] {
+      display: none;
+    }
+
+    .primary {
+      background: #1677ff !important;
+    }
+
+    .danger {
+      background: #8e3030 !important;
+    }
+
+    .progress-box {
+      margin-top: 14px;
+    }
+
+    progress {
+      width: 100%;
+      height: 12px;
+    }
+
+    .help {
+      margin-top: 18px;
+      padding: 12px;
+      background: #18212b;
+      border-radius: 12px;
+      line-height: 1.5;
+      font-size: 13px;
+      opacity: .85;
+    }
+
+    @media(max-width:500px) {
+      #skipCount {
+        font-size: 52px;
+      }
+
+      .buttons {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
 </head>
 
 <body>
@@ -20,242 +207,131 @@
 
 <main>
 
-<section class="camera-card">
+  <section class="card">
 
-  <div class="status" id="status">
-    Loading AI...
-  </div>
-
-  <!-- VIDEO AREA -->
-
-  <div class="camera-wrap">
-
-    <video
-      id="camera"
-      autoplay
-      muted
-      playsinline>
-    </video>
-
-    <video
-      id="fileVideo"
-      muted
-      playsinline
-      controls
-      style="display:none;">
-    </video>
-
-    <canvas id="overlay"></canvas>
-
-  </div>
-
-
-  <!-- CAMERA CONTROLS -->
-
-  <div class="controls">
-
-    <button id="startBtn">
-      📷 START CAMERA
-    </button>
-
-    <button id="switchBtn" disabled>
-      🔄 SWITCH CAMERA
-    </button>
-
-    <button id="stopBtn" disabled>
-      ⛔ STOP
-    </button>
-
-  </div>
-
-
-  <!-- REAL VIDEO FILE -->
-
-  <div class="upload-box">
-
-    <h3>🎥 ANALYZE A VIDEO</h3>
-
-    <p>
-      Select a skipping video from your phone.
-    </p>
-
-    <input
-      id="videoFile"
-      type="file"
-      accept="video/*">
-
-    <button
-      id="analyzeBtn"
-      disabled>
-      🧠 ANALYZE VIDEO
-    </button>
-
-  </div>
-
-
-  <!-- BODY STATUS -->
-
-  <div class="detection">
-
-    <span id="head">
-      HEAD ○
-    </span>
-
-    <span id="hands">
-      HANDS ○
-    </span>
-
-    <span id="legs">
-      LEGS ○
-    </span>
-
-  </div>
-
-
-  <!-- AI STAGE -->
-
-  <div
-    class="stage"
-    id="stage">
-
-    AI INITIALIZING
-
-  </div>
-
-
-  <!-- CALIBRATION -->
-
-  <div class="calibration">
-
-    <div class="cal-title">
-      5-JUMP CALIBRATION
+    <div id="status">
+      Starting AI...
     </div>
 
-    <div
-      class="cal-number"
-      id="calibrationCount">
+    <div class="video-box">
 
-      0 / 5
+      <video
+        id="camera"
+        autoplay
+        muted
+        playsinline>
+      </video>
+
+      <video
+        id="fileVideo"
+        muted
+        playsinline>
+      </video>
+
+      <canvas id="overlay"></canvas>
 
     </div>
 
-    <div class="bar">
+    <div class="info">
 
-      <div id="barFill"></div>
+      <div id="head">
+        HEAD ○
+      </div>
+
+      <div id="hands">
+        HANDS ○
+      </div>
+
+      <div id="legs">
+        LEGS ○
+      </div>
 
     </div>
 
-  </div>
-
-
-  <!-- COUNTER -->
-
-  <div class="count-title">
-    SKIPS
-  </div>
-
-  <div
-    class="count"
-    id="skipCount">
-
-    0
-
-  </div>
-
-
-  <!-- CALIBRATION BUTTON -->
-
-  <button
-    id="calibrateBtn"
-    disabled>
-
-    START 5-JUMP CALIBRATION
-
-  </button>
-
-
-  <!-- PROGRESS -->
-
-  <div
-    id="videoProgress"
-    style="display:none;">
-
-    <div>
-      VIDEO PROCESSING
+    <div id="stage" class="stage">
+      AI STARTING
     </div>
 
-    <progress
-      id="progressBar"
-      value="0"
-      max="100">
-    </progress>
+    <div class="count-title">
+      SKIPS
+    </div>
 
-    <span id="progressText">
-      0%
-    </span>
+    <div id="skipCount">
+      0
+    </div>
 
-  </div>
+    <div class="buttons">
 
+      <button
+        id="startBtn"
+        class="primary">
+        📷 START CAMERA
+      </button>
 
-  <!-- INSTRUCTIONS -->
+      <button
+        id="switchBtn"
+        disabled>
+        🔄 SWITCH CAMERA
+      </button>
 
-  <div class="instructions">
+      <button
+        id="stopBtn"
+        class="danger"
+        disabled>
+        ⛔ STOP
+      </button>
 
-    <b>CAMERA MODE</b>
+      <label
+        for="videoFile"
+        class="file-button">
+        📁 CHOOSE VIDEO
+      </label>
 
-    <p>
-      1. Start camera.
-    </p>
+      <input
+        id="videoFile"
+        type="file"
+        accept="video/*">
 
-    <p>
-      2. Keep your complete body visible.
-    </p>
+      <button
+        id="analyzeBtn"
+        class="primary"
+        disabled>
+        🧠 ANALYZE VIDEO
+      </button>
 
-    <p>
-      3. Start 5-jump calibration.
-    </p>
+    </div>
 
-    <p>
-      4. Complete five normal jumps.
-    </p>
+    <div class="progress-box">
+      <progress
+        id="progressBar"
+        value="0"
+        max="100">
+      </progress>
+    </div>
 
-    <p>
-      5. Continue skipping.
-    </p>
+    <div class="help">
 
+      <b>Camera mode</b>
+      <br>
+      Keep your full body visible. Start the camera and make 5 normal jumps for calibration.
 
-    <br>
+      <br><br>
 
+      <b>Video mode</b>
+      <br>
+      Choose a real video containing skipping. Then press ANALYZE VIDEO.
 
-    <b>VIDEO MODE</b>
+      <br><br>
 
-    <p>
-      1. Choose a skipping video.
-    </p>
+      The AI first looks for the body using head, hands and legs, then analyzes movement frame by frame.
 
-    <p>
-      2. Press ANALYZE VIDEO.
-    </p>
+    </div>
 
-    <p>
-      3. AI processes the video frame-by-frame.
-    </p>
-
-    <p>
-      4. The counter updates automatically.
-    </p>
-
-  </div>
-
-</section>
+  </section>
 
 </main>
 
-
-<script
-  type="module"
-  src="script.js">
-</script>
+<script type="module" src="script.js"></script>
 
 </body>
 </html>

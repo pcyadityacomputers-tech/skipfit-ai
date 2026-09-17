@@ -2,8 +2,11 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<meta name="viewport"
+      content="width=device-width,initial-scale=1.0">
+
 <title>SkipFit AI</title>
+
 <link rel="stylesheet" href="style.css">
 </head>
 
@@ -17,69 +20,242 @@
 
 <main>
 
-  <section class="camera-card">
+<section class="camera-card">
 
-    <div class="status" id="status">
-      Loading AI...
-    </div>
+  <div class="status" id="status">
+    Loading AI...
+  </div>
 
-    <div class="camera-wrap">
-      <video id="camera" autoplay muted playsinline></video>
-      <canvas id="overlay"></canvas>
-    </div>
+  <!-- VIDEO AREA -->
 
-    <div class="detection">
-      <span id="head">HEAD ○</span>
-      <span id="hands">HANDS ○</span>
-      <span id="legs">LEGS ○</span>
-    </div>
+  <div class="camera-wrap">
 
-    <div class="stage" id="stage">
-      AI INITIALIZING
-    </div>
+    <video
+      id="camera"
+      autoplay
+      muted
+      playsinline>
+    </video>
 
-    <div class="calibration">
-      <div class="cal-title">5-JUMP CALIBRATION</div>
-      <div class="cal-number" id="calibrationCount">0 / 5</div>
-      <div class="bar">
-        <div id="barFill"></div>
-      </div>
-    </div>
+    <video
+      id="fileVideo"
+      muted
+      playsinline
+      controls
+      style="display:none;">
+    </video>
 
-    <div class="count-title">
-      SKIPS
-    </div>
+    <canvas id="overlay"></canvas>
 
-    <div class="count" id="skipCount">
-      0
-    </div>
+  </div>
+
+
+  <!-- CAMERA CONTROLS -->
+
+  <div class="controls">
 
     <button id="startBtn">
-      START CAMERA
+      📷 START CAMERA
     </button>
 
-    <button id="calibrateBtn" disabled>
-      START 5-JUMP CALIBRATION
+    <button id="switchBtn" disabled>
+      🔄 SWITCH CAMERA
     </button>
 
     <button id="stopBtn" disabled>
-      STOP
+      ⛔ STOP
     </button>
 
-    <div class="instructions">
-      <b>How to use</b>
-      <p>1. Keep your whole body visible.</p>
-      <p>2. Start the camera.</p>
-      <p>3. Complete 5 normal jumps.</p>
-      <p>4. Wait for pattern confirmation.</p>
-      <p>5. Continue skipping. AI counts automatically.</p>
+  </div>
+
+
+  <!-- REAL VIDEO FILE -->
+
+  <div class="upload-box">
+
+    <h3>🎥 ANALYZE A VIDEO</h3>
+
+    <p>
+      Select a skipping video from your phone.
+    </p>
+
+    <input
+      id="videoFile"
+      type="file"
+      accept="video/*">
+
+    <button
+      id="analyzeBtn"
+      disabled>
+      🧠 ANALYZE VIDEO
+    </button>
+
+  </div>
+
+
+  <!-- BODY STATUS -->
+
+  <div class="detection">
+
+    <span id="head">
+      HEAD ○
+    </span>
+
+    <span id="hands">
+      HANDS ○
+    </span>
+
+    <span id="legs">
+      LEGS ○
+    </span>
+
+  </div>
+
+
+  <!-- AI STAGE -->
+
+  <div
+    class="stage"
+    id="stage">
+
+    AI INITIALIZING
+
+  </div>
+
+
+  <!-- CALIBRATION -->
+
+  <div class="calibration">
+
+    <div class="cal-title">
+      5-JUMP CALIBRATION
     </div>
 
-  </section>
+    <div
+      class="cal-number"
+      id="calibrationCount">
+
+      0 / 5
+
+    </div>
+
+    <div class="bar">
+
+      <div id="barFill"></div>
+
+    </div>
+
+  </div>
+
+
+  <!-- COUNTER -->
+
+  <div class="count-title">
+    SKIPS
+  </div>
+
+  <div
+    class="count"
+    id="skipCount">
+
+    0
+
+  </div>
+
+
+  <!-- CALIBRATION BUTTON -->
+
+  <button
+    id="calibrateBtn"
+    disabled>
+
+    START 5-JUMP CALIBRATION
+
+  </button>
+
+
+  <!-- PROGRESS -->
+
+  <div
+    id="videoProgress"
+    style="display:none;">
+
+    <div>
+      VIDEO PROCESSING
+    </div>
+
+    <progress
+      id="progressBar"
+      value="0"
+      max="100">
+    </progress>
+
+    <span id="progressText">
+      0%
+    </span>
+
+  </div>
+
+
+  <!-- INSTRUCTIONS -->
+
+  <div class="instructions">
+
+    <b>CAMERA MODE</b>
+
+    <p>
+      1. Start camera.
+    </p>
+
+    <p>
+      2. Keep your complete body visible.
+    </p>
+
+    <p>
+      3. Start 5-jump calibration.
+    </p>
+
+    <p>
+      4. Complete five normal jumps.
+    </p>
+
+    <p>
+      5. Continue skipping.
+    </p>
+
+
+    <br>
+
+
+    <b>VIDEO MODE</b>
+
+    <p>
+      1. Choose a skipping video.
+    </p>
+
+    <p>
+      2. Press ANALYZE VIDEO.
+    </p>
+
+    <p>
+      3. AI processes the video frame-by-frame.
+    </p>
+
+    <p>
+      4. The counter updates automatically.
+    </p>
+
+  </div>
+
+</section>
 
 </main>
 
-<script type="module" src="script.js"></script>
+
+<script
+  type="module"
+  src="script.js">
+</script>
 
 </body>
 </html>

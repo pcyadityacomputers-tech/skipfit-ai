@@ -1,12 +1,16 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<meta name="viewport"
+      content="width=device-width, initial-scale=1.0">
 
 <title>SkipFit AI</title>
 
 <style>
+
 *{
   box-sizing:border-box;
 }
@@ -28,8 +32,9 @@ h1{
   font-size:32px;
 }
 
-p{
-  opacity:.75;
+header p{
+  margin:7px 0;
+  opacity:.7;
 }
 
 .card{
@@ -62,7 +67,6 @@ p{
   width:100%;
   aspect-ratio:3/4;
   object-fit:cover;
-  transform:scaleX(-1);
 }
 
 #overlay{
@@ -72,13 +76,43 @@ p{
   width:100%;
   height:100%;
   pointer-events:none;
-  transform:scaleX(-1);
+}
+
+.info{
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:7px;
+  margin-top:10px;
+}
+
+.info div{
+  background:#182b40;
+  padding:10px 4px;
+  border-radius:9px;
+  font-size:11px;
+}
+
+.label{
+  opacity:.65;
+}
+
+.value{
+  margin-top:4px;
+  font-weight:bold;
+}
+
+#gesture{
+  margin-top:12px;
+  padding:13px;
+  background:#172c43;
+  border-radius:10px;
+  font-weight:bold;
 }
 
 #count{
-  font-size:70px;
+  font-size:65px;
   font-weight:bold;
-  margin:15px;
+  margin:12px;
 }
 
 button{
@@ -96,46 +130,118 @@ button{
 #stopBtn{
   background:#913333;
 }
+
+#resetBtn{
+  background:#27394d;
+}
+
+.help{
+  margin-top:12px;
+  padding:12px;
+  background:#0b1726;
+  border-radius:10px;
+  font-size:12px;
+  line-height:1.5;
+  opacity:.8;
+}
+
 </style>
 </head>
 
 <body>
 
 <header>
-  <h1>SkipFit AI</h1>
-  <p>By Aditya Kumar Yadav</p>
+
+<h1>SkipFit AI</h1>
+
+<p>By Aditya Kumar Yadav</p>
+
 </header>
+
 
 <div class="card">
 
-  <div id="status">
-    Loading AI...
-  </div>
+<div id="status">
+Loading AI...
+</div>
 
-  <div class="camera-box">
 
-    <video
-      id="camera"
-      autoplay
-      muted
-      playsinline>
-    </video>
+<div class="camera-box">
 
-    <canvas id="overlay"></canvas>
+<video
+id="camera"
+autoplay
+muted
+playsinline>
+</video>
 
-  </div>
-
-  <div id="count">0</div>
-
-  <button id="startBtn">
-    📷 START CAMERA
-  </button>
-
-  <button id="stopBtn">
-    ⛔ STOP CAMERA
-  </button>
+<canvas id="overlay"></canvas>
 
 </div>
+
+
+<div class="info">
+
+<div>
+<div class="label">FRAME</div>
+<div class="value" id="frame">0</div>
+</div>
+
+<div>
+<div class="label">FPS</div>
+<div class="value" id="fps">0</div>
+</div>
+
+<div>
+<div class="label">BODY</div>
+<div class="value" id="body">WAIT</div>
+</div>
+
+</div>
+
+
+<div id="gesture">
+GESTURE: WAITING
+</div>
+
+
+<div>
+<div style="opacity:.6">
+SKIPS
+</div>
+
+<div id="count">
+0
+</div>
+
+</div>
+
+
+<button id="startBtn">
+📷 START BACK CAMERA
+</button>
+
+
+<button id="stopBtn">
+⛔ STOP CAMERA
+</button>
+
+
+<button id="resetBtn">
+🔄 RESET
+</button>
+
+
+<div class="help">
+
+Stand far enough away so your full body is visible.
+<br>
+The system processes the camera frame-by-frame using MoveNet.
+
+</div>
+
+</div>
+
 
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
 
@@ -144,4 +250,5 @@ button{
 <script src="script.js"></script>
 
 </body>
+
 </html>

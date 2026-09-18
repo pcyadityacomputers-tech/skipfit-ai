@@ -22,6 +22,7 @@ let fpsFrames = 0;
 let fpsTime = performance.now();
 
 let skipCount = 0;
+
 let previousHipY = null;
 let previousAnkleY = null;
 
@@ -64,7 +65,7 @@ async function loadAI() {
 
 
 /* =========================
-   OPEN CAMERA
+   START CAMERA
 ========================= */
 
 async function startCamera() {
@@ -73,8 +74,6 @@ async function startCamera() {
 
     status.textContent =
       "Opening camera...";
-
-    /* Stop any old camera first */
 
     if (stream) {
 
@@ -85,15 +84,6 @@ async function startCamera() {
       stream = null;
     }
 
-
-    /*
-      IMPORTANT:
-      Do NOT force the rear camera
-      at first.
-
-      This avoids AbortError on
-      some Android/Chrome phones.
-    */
 
     stream =
       await navigator.mediaDevices.getUserMedia({
@@ -117,11 +107,6 @@ async function startCamera() {
     camera.style.display = "block";
 
 
-    /*
-      Wait until video actually has
-      camera dimensions.
-    */
-
     await new Promise(resolve => {
 
       if (
@@ -131,13 +116,13 @@ async function startCamera() {
 
         resolve();
 
-        return;
+      } else {
+
+        camera.onloadedmetadata = () => {
+          resolve();
+        };
+
       }
-
-
-      camera.onloadedmetadata = () => {
-        resolve();
-      };
 
     });
 
@@ -182,19 +167,21 @@ async function startCamera() {
       error.name;
 
     gestureDisplay.textContent =
-      error.message || "Camera failed";
-
+      error.message ||
+      "Camera failed";
   }
 }
 
 
 /* =========================
-   FRAME PROCESSING
+   FRAME BY FRAME
 ========================= */
 
 async function detectFrame() {
 
-  if (!running) return;
+  if (!running) {
+    return;
+  }
 
 
   frameNumber++;
@@ -301,7 +288,9 @@ function drawKeypoints(keypoints) {
 
     if (
       p.score < 0.35
-    ) continue;
+    ) {
+      continue;
+    }
 
 
     const x =
@@ -335,7 +324,7 @@ function drawKeypoints(keypoints) {
 
 
 /* =========================
-   GET POINT
+   GET BODY POINT
 ========================= */
 
 function getPoint(
@@ -346,6 +335,7 @@ function getPoint(
   const p =
     keypoints[index];
 
+
   if (
     !p ||
     p.score < 0.35
@@ -353,6 +343,7 @@ function getPoint(
 
     return null;
   }
+
 
   return p;
 }
@@ -401,9 +392,7 @@ function detectGesture(
   }
 
 
-  /*
-    BOTH HANDS UP
-  */
+  /* BOTH HANDS UP */
 
   if (
     leftWrist.y <
@@ -420,9 +409,7 @@ function detectGesture(
   }
 
 
-  /*
-    ARMS OUT
-  */
+  /* ARMS OUT */
 
   const armDistance =
     Math.abs(
@@ -514,8 +501,11 @@ function detectSkip(
   }
 
 
-  previousHipY = hipY;
-  previousAnkleY = ankleY;
+  previousHipY =
+    hipY;
+
+  previousAnkleY =
+    ankleY;
 
 
   const now =
@@ -561,7 +551,7 @@ function detectSkip(
 
 
 /* =========================
-   STOP
+   STOP CAMERA
 ========================= */
 
 function stopCamera() {
@@ -571,9 +561,11 @@ function stopCamera() {
 
   if (stream) {
 
-    stream.getTracks().forEach(
-      track => track.stop()
-    );
+    stream
+      .getTracks()
+      .forEach(
+        track => track.stop()
+      );
 
     stream = null;
   }
@@ -615,9 +607,46 @@ function resetCounter() {
   countDisplay.textContent =
     "0";
 
+
   frameNumber = 0;
 
   frameDisplay.textContent =
     "0";
 
-  previous
+
+  previousHipY = null;
+
+  previousAnkleY = null;
+
+
+  jumpState =
+    "GROUND";
+
+  lastSkipTime =
+    0;
+
+
+  gestureDisplay.textContent =
+    "GESTURE: WAITING";
+}
+
+
+/* =========================
+   BUTTONS
+========================= */
+
+startBtn.onclick =
+  startCamera;
+
+stopBtn.onclick =
+  stopCamera;
+
+resetBtn.onclick =
+  resetCounter;
+
+
+/* =========================
+   START AI
+========================= */
+
+loadAI();

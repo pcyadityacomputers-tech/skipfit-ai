@@ -1,18 +1,12 @@
-
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
 <meta charset="UTF-8">
-
-<meta name="viewport"
-      content="width=device-width,
-               initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 <title>SkipFit AI</title>
 
 <style>
-
 *{
   box-sizing:border-box;
 }
@@ -22,12 +16,11 @@ body{
   background:#07111f;
   color:white;
   font-family:Arial,sans-serif;
+  text-align:center;
 }
 
 header{
-  text-align:center;
   padding:20px 10px;
-  background:#0d1c2d;
 }
 
 h1{
@@ -35,1238 +28,120 @@ h1{
   font-size:32px;
 }
 
-header p{
-  margin:6px 0;
+p{
   opacity:.75;
 }
 
-main{
+.card{
+  width:94%;
   max-width:700px;
   margin:auto;
+  background:#101f32;
   padding:15px;
-}
-
-.card{
-  background:#102033;
   border-radius:18px;
-  padding:15px;
 }
 
 #status{
-  background:#182c42;
-  border-radius:10px;
   padding:12px;
-  text-align:center;
   margin-bottom:12px;
+  background:#182b40;
+  border-radius:10px;
   font-weight:bold;
 }
 
-.videoBox{
+.camera-box{
   position:relative;
   width:100%;
-  aspect-ratio:3/4;
   background:#000;
   border-radius:15px;
   overflow:hidden;
 }
 
-video,
-canvas{
+#camera{
+  display:none;
+  width:100%;
+  aspect-ratio:3/4;
+  object-fit:cover;
+  transform:scaleX(-1);
+}
+
+#overlay{
   position:absolute;
   left:0;
   top:0;
   width:100%;
   height:100%;
-  object-fit:cover;
-}
-
-#camera{
-  display:none;
-}
-
-#videoFilePlayer{
-  display:none;
-}
-
-canvas{
   pointer-events:none;
-}
-
-.info{
-  display:grid;
-  grid-template-columns:repeat(3,1fr);
-  gap:7px;
-  margin-top:12px;
-}
-
-.info div{
-  background:#182c42;
-  border-radius:9px;
-  padding:10px 3px;
-  text-align:center;
-  font-size:11px;
-  font-weight:bold;
-}
-
-#stage{
-  margin-top:14px;
-  padding:13px;
-  background:#172c43;
-  border-radius:10px;
-  text-align:center;
-  font-weight:bold;
-}
-
-.title{
-  text-align:center;
-  margin-top:20px;
-  opacity:.65;
+  transform:scaleX(-1);
 }
 
 #count{
-  text-align:center;
-  font-size:75px;
-  font-weight:900;
-  margin:5px 0 20px;
+  font-size:70px;
+  font-weight:bold;
+  margin:15px;
 }
 
-.buttons{
-  display:grid;
-  grid-template-columns:1fr 1fr;
-  gap:9px;
-}
-
-button,
-.fileButton{
+button{
+  width:100%;
+  padding:15px;
+  margin:6px 0;
   border:0;
   border-radius:12px;
-  padding:14px 8px;
-  background:#263b51;
+  background:#1677ff;
   color:white;
-  font-size:14px;
+  font-size:16px;
   font-weight:bold;
-  text-align:center;
-  cursor:pointer;
 }
 
-.primary{
-  background:#147cff;
+#stopBtn{
+  background:#913333;
 }
-
-.danger{
-  background:#a33a3a;
-}
-
-button:disabled{
-  opacity:.4;
-}
-
-input{
-  display:none;
-}
-
-#progress{
-  width:100%;
-  margin-top:15px;
-}
-
-.help{
-  margin-top:15px;
-  padding:13px;
-  background:#0b1726;
-  border-radius:12px;
-  font-size:13px;
-  line-height:1.5;
-}
-
-@media(max-width:500px){
-
-  .buttons{
-    grid-template-columns:1fr;
-  }
-
-  #count{
-    font-size:65px;
-  }
-
-}
-
 </style>
 </head>
-
 
 <body>
 
 <header>
-
-<h1>SkipFit AI</h1>
-
-<p>AI Skipping Counter</p>
-
-<small>Camera + Pose Detection</small>
-
+  <h1>SkipFit AI</h1>
+  <p>By Aditya Kumar Yadav</p>
 </header>
-
-
-<main>
 
 <div class="card">
 
+  <div id="status">
+    Loading AI...
+  </div>
 
-<div id="status">
-Starting AI...
-</div>
+  <div class="camera-box">
 
+    <video
+      id="camera"
+      autoplay
+      muted
+      playsinline>
+    </video>
 
-<div class="videoBox">
+    <canvas id="overlay"></canvas>
 
-<video id="camera"
-       autoplay
-       muted
-       playsinline>
-</video>
+  </div>
 
-<video id="videoFilePlayer"
-       muted
-       playsinline>
-</video>
+  <div id="count">0</div>
 
-<canvas id="canvas"></canvas>
+  <button id="startBtn">
+    📷 START CAMERA
+  </button>
 
-</div>
-
-
-<div class="info">
-
-<div id="cameraState">
-CAMERA ○
-</div>
-
-<div id="videoState">
-VIDEO ○
-</div>
-
-<div id="aiState">
-AI ...
-</div>
+  <button id="stopBtn">
+    ⛔ STOP CAMERA
+  </button>
 
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
 
-<div id="stage">
-WAITING
-</div>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection"></script>
 
-
-<div class="title">
-SKIPS
-</div>
-
-
-<div id="count">
-0
-</div>
-
-
-<div class="buttons">
-
-<button id="startCamera"
-        class="primary">
-
-📷 START CAMERA
-
-</button>
-
-
-<button id="switchCamera"
-        disabled>
-
-🔄 SWITCH CAMERA
-
-</button>
-
-
-<button id="stopCamera"
-        class="danger"
-        disabled>
-
-⛔ STOP CAMERA
-
-</button>
-
-
-<label class="fileButton"
-       for="videoInput">
-
-📁 CHOOSE VIDEO
-
-</label>
-
-<input id="videoInput"
-       type="file"
-       accept="video/*">
-
-
-<button id="analyzeVideo"
-        class="primary"
-        disabled>
-
-🧠 ANALYZE VIDEO
-
-</button>
-
-</div>
-
-
-<progress id="progress"
-          value="0"
-          max="100">
-</progress>
-
-
-<div class="help">
-
-<b>How to use:</b>
-
-<br><br>
-
-1. Tap START CAMERA.
-
-<br>
-
-2. Allow camera permission.
-
-<br>
-
-3. Stand where your whole body is visible.
-
-<br>
-
-4. Wait for calibration.
-
-<br>
-
-5. Start skipping normally.
-
-<br><br>
-
-<b>Important:</b>
-Keep your head, body, knees and feet visible.
-
-</div>
-
-
-</div>
-
-</main>
-
-
-<script type="module">
-
-import {
-  FilesetResolver,
-  PoseLandmarker
-}
-from
-"https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/+esm";
-
-
-/* =========================================
-   ELEMENTS
-========================================= */
-
-const camera =
-document.getElementById("camera");
-
-const canvas =
-document.getElementById("canvas");
-
-const ctx =
-canvas.getContext("2d");
-
-const status =
-document.getElementById("status");
-
-const stage =
-document.getElementById("stage");
-
-const count =
-document.getElementById("count");
-
-const startButton =
-document.getElementById("startCamera");
-
-const switchButton =
-document.getElementById("switchCamera");
-
-const stopButton =
-document.getElementById("stopCamera");
-
-const cameraState =
-document.getElementById("cameraState");
-
-const aiState =
-document.getElementById("aiState");
-
-
-/* =========================================
-   VARIABLES
-========================================= */
-
-let landmarker = null;
-
-let aiReady = false;
-
-let stream = null;
-
-let cameraRunning = false;
-
-let facingMode = "user";
-
-let skipCount = 0;
-
-let baselineHip = null;
-
-let previousHip = null;
-
-let movementState = "GROUND";
-
-let peakMovement = 0;
-
-let lastCountTime = 0;
-
-let calibration = [];
-
-let lastFrameTime = 0;
-
-
-/* =========================================
-   LOAD AI
-========================================= */
-
-async function loadAI(){
-
-  try{
-
-    status.textContent =
-    "Loading AI...";
-
-    aiState.textContent =
-    "AI ...";
-
-
-    const vision =
-    await FilesetResolver.forVisionTasks(
-
-      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22/wasm"
-
-    );
-
-
-    landmarker =
-    await PoseLandmarker.createFromOptions(
-
-      vision,
-
-      {
-
-        baseOptions:{
-
-          modelAssetPath:
-
-          "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
-
-          delegate:"CPU"
-
-        },
-
-        runningMode:"VIDEO",
-
-        numPoses:1,
-
-        minPoseDetectionConfidence:.25,
-
-        minPosePresenceConfidence:.25,
-
-        minTrackingConfidence:.25
-
-      }
-
-    );
-
-
-    aiReady = true;
-
-    aiState.textContent =
-    "AI ✓";
-
-    status.textContent =
-    "✅ AI READY";
-
-    stage.textContent =
-    "READY";
-
-
-  }catch(error){
-
-    console.error(error);
-
-    aiState.textContent =
-    "AI ✕";
-
-    status.textContent =
-    "❌ AI LOAD ERROR";
-
-    stage.textContent =
-    "CHECK INTERNET";
-
-  }
-
-}
-
-
-/* =========================================
-   RESET
-========================================= */
-
-function resetCounter(){
-
-  skipCount = 0;
-
-  count.textContent = "0";
-
-  baselineHip = null;
-
-  previousHip = null;
-
-  movementState = "GROUND";
-
-  peakMovement = 0;
-
-  lastCountTime = 0;
-
-  calibration = [];
-
-}
-
-
-/* =========================================
-   START CAMERA
-========================================= */
-
-startButton.onclick =
-async function(){
-
-  try{
-
-    if(!navigator.mediaDevices){
-
-      status.textContent =
-      "Camera API unavailable";
-
-      return;
-
-    }
-
-
-    if(stream){
-
-      stream.getTracks().forEach(
-        track => track.stop()
-      );
-
-    }
-
-
-    resetCounter();
-
-
-    status.textContent =
-    "Requesting camera...";
-
-
-    stream =
-    await navigator.mediaDevices.getUserMedia({
-
-      video:{
-
-        facingMode:facingMode,
-
-        width:{
-          ideal:640
-        },
-
-        height:{
-          ideal:480
-        },
-
-        frameRate:{
-          ideal:30
-        }
-
-      },
-
-      audio:false
-
-    });
-
-
-    camera.srcObject =
-    stream;
-
-
-    camera.style.display =
-    "block";
-
-
-    await camera.play();
-
-
-    cameraRunning = true;
-
-
-    startButton.disabled =
-    true;
-
-    switchButton.disabled =
-    false;
-
-    stopButton.disabled =
-    false;
-
-
-    cameraState.textContent =
-    "CAMERA ✓";
-
-
-    status.textContent =
-    "📷 CAMERA WORKING";
-
-
-    stage.textContent =
-    "CALIBRATING";
-
-
-    resizeCanvas();
-
-
-    requestAnimationFrame(
-      cameraLoop
-    );
-
-
-  }catch(error){
-
-    console.error(error);
-
-    status.textContent =
-    "❌ CAMERA ERROR: " +
-    error.name;
-
-    stage.textContent =
-    "CAMERA FAILED";
-
-  }
-
-};
-
-
-/* =========================================
-   CAMERA LOOP
-========================================= */
-
-function cameraLoop(){
-
-  if(!cameraRunning){
-    return;
-  }
-
-
-  requestAnimationFrame(
-    cameraLoop
-  );
-
-
-  if(!aiReady){
-    return;
-  }
-
-
-  if(camera.readyState < 2){
-    return;
-  }
-
-
-  const now =
-  performance.now();
-
-
-  if(
-    now - lastFrameTime < 50
-  ){
-    return;
-  }
-
-
-  lastFrameTime =
-  now;
-
-
-  try{
-
-    resizeCanvas();
-
-
-    const result =
-    landmarker.detectForVideo(
-      camera,
-      now
-    );
-
-
-    processPose(result);
-
-
-  }catch(error){
-
-    console.error(
-      "POSE ERROR",
-      error
-    );
-
-  }
-
-}
-
-
-/* =========================================
-   PROCESS POSE
-========================================= */
-
-function processPose(result){
-
-  ctx.clearRect(
-    0,
-    0,
-    canvas.width,
-    canvas.height
-  );
-
-
-  if(
-    !result ||
-    !result.landmarks ||
-    !result.landmarks.length
-  ){
-
-    stage.textContent =
-    "BODY NOT FOUND";
-
-    return;
-
-  }
-
-
-  const points =
-  result.landmarks[0];
-
-
-  drawPose(points);
-
-
-  const leftHip =
-  points[23];
-
-  const rightHip =
-  points[24];
-
-
-  if(!leftHip || !rightHip){
-    return;
-  }
-
-
-  if(
-    leftHip.visibility !== undefined &&
-    leftHip.visibility < .15
-  ){
-    return;
-  }
-
-
-  if(
-    rightHip.visibility !== undefined &&
-    rightHip.visibility < .15
-  ){
-    return;
-  }
-
-
-  const hipY =
-  (leftHip.y + rightHip.y) / 2;
-
-
-  /* =====================================
-     CALIBRATION
-  ===================================== */
-
-  if(
-    calibration.length < 40
-  ){
-
-    calibration.push(
-      hipY
-    );
-
-
-    stage.textContent =
-    "CALIBRATING " +
-    Math.round(
-      calibration.length /
-      40 *
-      100
-    ) +
-    "%";
-
-
-    if(
-      calibration.length === 40
-    ){
-
-      baselineHip =
-      average(calibration);
-
-      previousHip =
-      baselineHip;
-
-      stage.textContent =
-      "READY — START SKIPPING";
-
-      status.textContent =
-      "🔥 AI READY";
-
-    }
-
-
-    return;
-
-  }
-
-
-  /* =====================================
-     MOVEMENT
-  ===================================== */
-
-  const movement =
-  baselineHip - hipY;
-
-
-  const speed =
-  previousHip - hipY;
-
-
-  previousHip =
-  hipY;
-
-
-  /*
-     SMALL UPWARD MOVEMENT
-     = body is going upward
-  */
-
-  if(
-    movement > .015 &&
-    speed > .001
-  ){
-
-    if(
-      movementState ===
-      "GROUND"
-    ){
-
-      movementState =
-      "AIR";
-
-      peakMovement =
-      movement;
-
-      stage.textContent =
-      "⬆ JUMP";
-
-    }
-
-  }
-
-
-  /* =====================================
-     PEAK
-  ===================================== */
-
-  if(
-    movementState ===
-    "AIR"
-  ){
-
-    if(
-      movement >
-      peakMovement
-    ){
-
-      peakMovement =
-      movement;
-
-    }
-
-
-    /*
-       Body has started coming down.
-    */
-
-    if(
-      speed < -.001
-    ){
-
-      movementState =
-      "DOWN";
-
-    }
-
-  }
-
-
-  /* =====================================
-     LANDING
-  ===================================== */
-
-  if(
-    movementState ===
-    "DOWN"
-  ){
-
-    const now =
-    performance.now();
-
-
-    /*
-       Enough movement + enough time
-       since previous count.
-    */
-
-    if(
-      peakMovement > .012 &&
-      now - lastCountTime > 160
-    ){
-
-      skipCount++;
-
-      count.textContent =
-      skipCount;
-
-      lastCountTime =
-      now;
-
-      stage.textContent =
-      "🔥 SKIP " +
-      skipCount;
-
-    }
-
-
-    /*
-       Reset when body gets near
-       the starting position.
-    */
-
-    if(
-      movement < .008
-    ){
-
-      movementState =
-      "GROUND";
-
-      peakMovement =
-      0;
-
-    }
-
-  }
-
-}
-
-
-/* =========================================
-   DRAW POSE
-========================================= */
-
-function drawPose(points){
-
-  const connections = [
-
-    [11,12],
-
-    [11,13],
-    [13,15],
-
-    [12,14],
-    [14,16],
-
-    [11,23],
-    [12,24],
-
-    [23,24],
-
-    [23,25],
-    [25,27],
-
-    [24,26],
-    [26,28]
-
-  ];
-
-
-  ctx.strokeStyle =
-  "#00ff88";
-
-  ctx.lineWidth = 3;
-
-
-  for(
-    const connection
-    of connections
-  ){
-
-    const a =
-    points[connection[0]];
-
-    const b =
-    points[connection[1]];
-
-
-    if(!a || !b){
-      continue;
-    }
-
-
-    ctx.beginPath();
-
-    ctx.moveTo(
-      a.x * canvas.width,
-      a.y * canvas.height
-    );
-
-    ctx.lineTo(
-      b.x * canvas.width,
-      b.y * canvas.height
-    );
-
-    ctx.stroke();
-
-  }
-
-
-  ctx.fillStyle =
-  "#ffffff";
-
-
-  for(
-    const point
-    of points
-  ){
-
-    if(
-      point.visibility !== undefined &&
-      point.visibility < .15
-    ){
-      continue;
-    }
-
-
-    ctx.beginPath();
-
-    ctx.arc(
-
-      point.x *
-      canvas.width,
-
-      point.y *
-      canvas.height,
-
-      4,
-
-      0,
-
-      Math.PI * 2
-
-    );
-
-    ctx.fill();
-
-  }
-
-}
-
-
-/* =========================================
-   AVERAGE
-========================================= */
-
-function average(array){
-
-  if(!array.length){
-    return 0;
-  }
-
-
-  let total = 0;
-
-
-  for(
-    const value
-    of array
-  ){
-
-    total += value;
-
-  }
-
-
-  return total /
-  array.length;
-
-}
-
-
-/* =========================================
-   RESIZE CANVAS
-========================================= */
-
-function resizeCanvas(){
-
-  if(
-    camera.videoWidth &&
-    camera.videoHeight
-  ){
-
-    canvas.width =
-    camera.videoWidth;
-
-    canvas.height =
-    camera.videoHeight;
-
-  }
-
-}
-
-
-/* =========================================
-   SWITCH CAMERA
-========================================= */
-
-switchButton.onclick =
-async function(){
-
-  facingMode =
-  facingMode === "user"
-  ? "environment"
-  : "user";
-
-
-  cameraRunning =
-  false;
-
-
-  if(stream){
-
-    stream.getTracks().forEach(
-      track => track.stop()
-    );
-
-    stream = null;
-
-  }
-
-
-  startButton.disabled =
-  false;
-
-  switchButton.disabled =
-  true;
-
-  stopButton.disabled =
-  true;
-
-
-  await startButton.click();
-
-};
-
-
-/* =========================================
-   STOP CAMERA
-========================================= */
-
-stopButton.onclick =
-function(){
-
-  cameraRunning =
-  false;
-
-
-  if(stream){
-
-    stream.getTracks().forEach(
-      track => track.stop()
-    );
-
-    stream = null;
-
-  }
-
-
-  camera.srcObject =
-  null;
-
-
-  camera.style.display =
-  "none";
-
-
-  resetCounter();
-
-
-  cameraState.textContent =
-  "CAMERA ○";
-
-
-  startButton.disabled =
-  false;
-
-  switchButton.disabled =
-  true;
-
-  stopButton.disabled =
-  true;
-
-
-  stage.textContent =
-  "STOPPED";
-
-  status.textContent =
-  "Camera stopped";
-
-
-};
-
-
-/* =========================================
-   START
-========================================= */
-
-resetCounter();
-
-loadAI();
-
-</script>
+<script src="script.js"></script>
 
 </body>
 </html>

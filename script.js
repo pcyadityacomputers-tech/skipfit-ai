@@ -1,73 +1,59 @@
-const camera = document.getElementById("camera");
 const status = document.getElementById("status");
 
 const startBtn = document.getElementById("startBtn");
 const backCameraBtn = document.getElementById("backCameraBtn");
 const stopBtn = document.getElementById("stopBtn");
+const resetBtn = document.getElementById("resetBtn");
 
-
-/* =========================
-   AI
-========================= */
-
-let detector = null;
+const camera = document.getElementById("camera");
 
 let stream = null;
 
-let running = false;
-
-let processing = false;
-
 
 /* =========================
-   COUNTER
+   CHECK LIBRARIES
 ========================= */
 
-let skipCount = 0;
+async function checkAI() {
 
-let jumpPhase = "GROUND";
-
-let lastCountTime = 0;
-
-
-/* =========================
-   MOVEMENT HISTORY
-========================= */
-
-let hipHistory = [];
-
-let ankleHistory = [];
-
-let verticalHistory = [];
-
-let lastVertical = null;
-
-
-/* =========================
-   SETTINGS
-========================= */
-
-const MIN_CONFIDENCE = 0.35;
-
-const SMOOTHING_FRAMES = 5;
-
-const MIN_SKIP_TIME = 280;
-
-
-/* =====================================================
-   LOAD AI
-===================================================== */
-
-async function loadAI() {
+  status.textContent = "Checking AI...";
 
   try {
 
+    if (typeof tf === "undefined") {
+
+      throw new Error(
+        "TensorFlow.js did not load"
+      );
+
+    }
+
     status.textContent =
-      "Loading MoveNet AI...";
+      "TensorFlow loaded ✓";
 
     await tf.ready();
 
-    detector =
+
+    if (
+      typeof poseDetection ===
+      "undefined"
+    ) {
+
+      throw new Error(
+        "MoveNet library did not load"
+      );
+
+    }
+
+    status.textContent =
+      "MoveNet library loaded ✓";
+
+
+    status.textContent =
+      "Loading MoveNet model...";
+
+
+    const detector =
       await poseDetection.createDetector(
 
         poseDetection.SupportedModels.MoveNet,
@@ -79,93 +65,75 @@ async function loadAI() {
 
       );
 
+
+    window.skipDetector =
+      detector;
+
+
     status.textContent =
       "✅ AI READY — START CAMERA";
 
-  }
 
-  catch (error) {
+  } catch (error) {
 
-    console.error(error);
-
-    status.textContent =
-      "❌ AI ERROR: " +
-      error.message;
-
-  }
-
-}
-
-
-/* =====================================================
-   STOP CAMERA
-===================================================== */
-
-function stopCamera() {
-
-  running = false;
-
-  processing = false;
-
-
-  if (stream) {
-
-    stream.getTracks().forEach(
-      track => track.stop()
+    console.error(
+      "AI START ERROR:",
+      error
     );
 
-    stream = null;
+    status.textContent =
+      "❌ " + error.message;
 
   }
-
-
-  camera.srcObject = null;
-
-  camera.style.display =
-    "none";
-
-
-  resetTracking();
-
-
-  status.textContent =
-    "Camera stopped";
 
 }
 
 
-/* =====================================================
-   START NORMAL CAMERA
-===================================================== */
+/* =========================
+   CAMERA
+========================= */
 
-async function startCamera() {
+async function startCamera(
+  back = false
+) {
 
   try {
 
-    stopCamera();
+    if (stream) {
+
+      stream.getTracks().forEach(
+        track => track.stop()
+      );
+
+    }
+
 
     status.textContent =
-      "Opening camera...";
+      back
+        ? "Opening back camera..."
+        : "Opening camera...";
+
+
+    const constraints = {
+
+      video: back
+        ? {
+            facingMode: {
+              ideal: "environment"
+            }
+          }
+        : true,
+
+      audio: false
+
+    };
 
 
     stream =
-      await navigator.mediaDevices.getUserMedia({
-
-        video: {
-
-          width: {
-            ideal: 640
-          },
-
-          height: {
-            ideal: 480
-          }
-
-        },
-
-        audio: false
-
-      });
+      await navigator.mediaDevices
+        .getUserMedia(
+          constraints
+        );
 
 
     camera.srcObject =
@@ -178,20 +146,12 @@ async function startCamera() {
     await camera.play();
 
 
-    running = true;
-
-    processing = false;
-
-
     status.textContent =
-      "📷 CAMERA + AI WORKING";
+      back
+        ? "📷 BACK CAMERA WORKING"
+        : "📷 CAMERA WORKING";
 
-
-    processFrame();
-
-  }
-
-  catch (error) {
+  } catch (error) {
 
     console.error(error);
 
@@ -204,311 +164,88 @@ async function startCamera() {
 }
 
 
-/* =====================================================
-   START BACK CAMERA
-===================================================== */
+/* =========================
+   STOP
+========================= */
 
-async function startBackCamera() {
+function stopCamera() {
 
-  try {
+  if (stream) {
 
-    stopCamera();
+    stream.getTracks().forEach(
+      track => track.stop()
+    );
 
-    status.textContent =
-      "Opening back camera...";
-
-
-    stream =
-      await navigator.mediaDevices.getUserMedia({
-
-        video: {
-
-          facingMode: {
-            ideal: "environment"
-          },
-
-          width: {
-            ideal: 640
-          },
-
-          height: {
-            ideal: 480
-          }
-
-        },
-
-        audio: false
-
-      });
-
-
-    camera.srcObject =
-      stream;
-
-    camera.style.display =
-      "block";
-
-
-    await camera.play();
-
-
-    running = true;
-
-    processing = false;
-
-
-    status.textContent =
-      "📷 BACK CAMERA + AI WORKING";
-
-
-    processFrame();
+    stream = null;
 
   }
 
-  catch (error) {
+  camera.srcObject = null;
 
-    console.error(error);
+  camera.style.display =
+    "none";
 
-    status.textContent =
-      "❌ BACK CAMERA ERROR: " +
-      error.name;
-
-  }
+  status.textContent =
+    "Camera stopped";
 
 }
 
 
-/* =====================================================
-   GET GOOD KEYPOINT
-===================================================== */
+/* =========================
+   RESET
+========================= */
 
-function point(keypoints, index) {
+function resetCounter() {
 
-  const p =
-    keypoints[index];
+  const count =
+    document.getElementById("count");
 
-  if (!p) {
-    return null;
-  }
+  if (count) {
 
-  if (
-    p.score < MIN_CONFIDENCE
-  ) {
-
-    return null;
+    count.textContent = "0";
 
   }
 
-  return p;
+  status.textContent =
+    "Counter reset";
 
 }
 
 
-/* =====================================================
-   MAIN FRAME PROCESSING
-===================================================== */
+/* =========================
+   BUTTONS
+========================= */
 
-async function processFrame() {
+startBtn.onclick = () => {
 
-  if (!running) {
-    return;
-  }
+  startCamera(false);
 
+};
 
-  /*
-    Never run two AI predictions
-    simultaneously.
-  */
 
-  if (processing) {
+backCameraBtn.onclick = () => {
 
-    requestAnimationFrame(
-      processFrame
-    );
+  startCamera(true);
 
-    return;
+};
 
-  }
 
+stopBtn.onclick = () => {
 
-  if (!detector) {
+  stopCamera();
 
-    requestAnimationFrame(
-      processFrame
-    );
+};
 
-    return;
 
-  }
+resetBtn.onclick = () => {
 
+  resetCounter();
 
-  processing = true;
+};
 
 
-  try {
+/* =========================
+   START
+========================= */
 
-    const poses =
-      await detector.estimatePoses(
-        camera
-      );
-
-
-    if (
-      poses.length > 0
-    ) {
-
-      const keypoints =
-        poses[0].keypoints;
-
-
-      detectJump(
-        keypoints
-      );
-
-    }
-
-  }
-
-  catch (error) {
-
-    console.error(
-      "AI ERROR:",
-      error
-    );
-
-  }
-
-
-  processing = false;
-
-
-  if (running) {
-
-    requestAnimationFrame(
-      processFrame
-    );
-
-  }
-
-}
-
-
-/* =====================================================
-   JUMP / SKIP DETECTION
-===================================================== */
-
-function detectJump(keypoints) {
-
-  /*
-    MoveNet indexes:
-
-    11 = left hip
-    12 = right hip
-
-    15 = left ankle
-    16 = right ankle
-
-    5  = left shoulder
-    6  = right shoulder
-  */
-
-
-  const leftHip =
-    point(keypoints, 11);
-
-  const rightHip =
-    point(keypoints, 12);
-
-  const leftAnkle =
-    point(keypoints, 15);
-
-  const rightAnkle =
-    point(keypoints, 16);
-
-  const leftShoulder =
-    point(keypoints, 5);
-
-  const rightShoulder =
-    point(keypoints, 6);
-
-
-  /*
-    We need hips + ankles.
-  */
-
-  if (
-    !leftHip ||
-    !rightHip ||
-    !leftAnkle ||
-    !rightAnkle
-  ) {
-
-    return;
-
-  }
-
-
-  /* =========================
-     BODY SCALE
-  ========================= */
-
-  let bodyScale = 1;
-
-
-  if (
-    leftShoulder &&
-    rightShoulder
-  ) {
-
-    const shoulderWidth =
-      Math.abs(
-        leftShoulder.x -
-        rightShoulder.x
-      );
-
-
-    const hipWidth =
-      Math.abs(
-        leftHip.x -
-        rightHip.x
-      );
-
-
-    bodyScale =
-      Math.max(
-        shoulderWidth,
-        hipWidth,
-        0.10
-      );
-
-  }
-
-
-  /*
-    Normalize movement.
-
-    This makes the detector less
-    sensitive to how far the
-    person stands from camera.
-  */
-
-  const scale =
-    Math.max(
-      bodyScale,
-      0.10
-    );
-
-
-  /* =========================
-     HIP POSITION
-  ========================= */
-
-  const hipY =
-    (
-      leftHip.y +
-      rightHip.y
-    ) / 2;
-
-
-  /* =========================
-     AN
+checkAI();

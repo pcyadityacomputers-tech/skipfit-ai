@@ -7,6 +7,10 @@
   <title>SkipFit AI</title>
 
   <style>
+    * {
+      box-sizing: border-box;
+    }
+
     body {
       margin: 0;
       background: #07111f;
@@ -26,6 +30,7 @@
 
     h1 {
       margin: 0;
+      font-size: 32px;
     }
 
     #status {
@@ -41,6 +46,7 @@
       background: black;
       border-radius: 15px;
       overflow: hidden;
+      position: relative;
     }
 
     #camera {
@@ -48,6 +54,55 @@
       width: 100%;
       aspect-ratio: 3 / 4;
       object-fit: cover;
+    }
+
+    #overlay {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .stat {
+      background: #182b40;
+      padding: 10px 4px;
+      border-radius: 10px;
+      font-size: 12px;
+    }
+
+    .stat-value {
+      display: block;
+      font-size: 18px;
+      font-weight: bold;
+      margin-top: 4px;
+    }
+
+    .skip-title {
+      margin-top: 15px;
+      opacity: 0.7;
+    }
+
+    #count {
+      font-size: 65px;
+      font-weight: bold;
+      margin: 5px;
+    }
+
+    #gesture {
+      background: #172c43;
+      padding: 12px;
+      border-radius: 10px;
+      font-weight: bold;
+      margin-top: 10px;
     }
 
     button {
@@ -69,6 +124,20 @@
     #stopBtn {
       background: #913333;
     }
+
+    #resetBtn {
+      background: #27394d;
+    }
+
+    .help {
+      margin-top: 15px;
+      padding: 12px;
+      background: #0b1726;
+      border-radius: 10px;
+      font-size: 12px;
+      line-height: 1.5;
+      opacity: 0.8;
+    }
   </style>
 </head>
 
@@ -81,7 +150,7 @@
     <p>By Aditya Kumar Yadav</p>
 
     <div id="status">
-      Camera ready
+      Loading AI...
     </div>
 
     <div class="camera-box">
@@ -93,6 +162,51 @@
         playsinline>
       </video>
 
+      <canvas id="overlay"></canvas>
+
+    </div>
+
+    <div class="stats">
+
+      <div class="stat">
+        FRAME
+        <span
+          class="stat-value"
+          id="frame">
+          0
+        </span>
+      </div>
+
+      <div class="stat">
+        FPS
+        <span
+          class="stat-value"
+          id="fps">
+          0
+        </span>
+      </div>
+
+      <div class="stat">
+        BODY
+        <span
+          class="stat-value"
+          id="body">
+          WAIT
+        </span>
+      </div>
+
+    </div>
+
+    <div id="gesture">
+      GESTURE: WAITING
+    </div>
+
+    <div class="skip-title">
+      SKIPS
+    </div>
+
+    <div id="count">
+      0
     </div>
 
     <button id="startBtn">
@@ -107,9 +221,19 @@
       ⛔ STOP CAMERA
     </button>
 
+    <button id="resetBtn">
+      🔄 RESET
+    </button>
+
+    <div class="help">
+      Keep your full body visible.
+      <br>
+      Keep the phone still.
+      <br>
+      Jump normally while skipping.
+    </div>
+
   </div>
 
-  <script src="script.js"></script>
 
-</body>
-</html>
+  <!-- Tensor

@@ -1,94 +1,191 @@
-const camera = document.getElementById("camera");
-const overlay = document.getElementById("overlay");
-const ctx = overlay.getContext("2d");
+/* =====================================================
+   SKIPFIT AI
+   MoveNet Body Detection + Camera + Gestures + Counting
+===================================================== */
 
-const status = document.getElementById("status");
-const startBtn = document.getElementById("startBtn");
-const stopBtn = document.getElementById("stopBtn");
-const resetBtn = document.getElementById("resetBtn");
 
-const frameDisplay = document.getElementById("frame");
-const fpsDisplay = document.getElementById("fps");
-const bodyDisplay = document.getElementById("body");
-const gestureDisplay = document.getElementById("gesture");
-const countDisplay = document.getElementById("count");
+/* =========================
+   ELEMENTS
+========================= */
+
+const camera =
+  document.getElementById("camera");
+
+const overlay =
+  document.getElementById("overlay");
+
+const ctx =
+  overlay.getContext("2d");
+
+const status =
+  document.getElementById("status");
+
+const startBtn =
+  document.getElementById("startBtn");
+
+const backCameraBtn =
+  document.getElementById("backCameraBtn");
+
+const stopBtn =
+  document.getElementById("stopBtn");
+
+const resetBtn =
+  document.getElementById("resetBtn");
+
+const frameDisplay =
+  document.getElementById("frame");
+
+const fpsDisplay =
+  document.getElementById("fps");
+
+const bodyDisplay =
+  document.getElementById("body");
+
+const gestureDisplay =
+  document.getElementById("gesture");
+
+const countDisplay =
+  document.getElementById("count");
+
+
+/* =========================
+   VARIABLES
+========================= */
 
 let stream = null;
-let running = false;
+
 let detector = null;
 
+let running = false;
+
+let processing = false;
+
 let frameNumber = 0;
+
 let fpsFrames = 0;
+
 let fpsTime = performance.now();
 
 let skipCount = 0;
 
-let previousHipY = null;
-let previousAnkleY = null;
-
-let jumpState = "GROUND";
 let lastSkipTime = 0;
 
 
 /* =========================
-   LOAD AI
+   MOVEMENT VARIABLES
 ========================= */
+
+let previousHipY = null;
+
+let previousAnkleY = null;
+
+let movementHistory = [];
+
+let jumpState = "GROUND";
+
+
+/* =========================
+   CAMERA VARIABLES
+========================= */
+
+let currentCameraId = null;
+
+
+/* =====================================================
+   LOAD AI
+===================================================== */
 
 async function loadAI() {
 
   try {
 
-    status.textContent = "Loading MoveNet AI...";
+    status.textContent =
+      "Loading MoveNet AI...";
 
     await tf.ready();
 
     detector =
       await poseDetection.createDetector(
+
         poseDetection.SupportedModels.MoveNet,
+
         {
           modelType:
             poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING
         }
+
       );
 
     status.textContent =
       "✅ AI READY — START CAMERA";
 
-  } catch (error) {
+  }
+
+  catch (error) {
 
     console.error(error);
 
     status.textContent =
       "❌ AI ERROR: " + error.message;
+
   }
+
 }
 
 
-/* =========================
-   START CAMERA
-========================= */
+/* =====================================================
+   STOP CURRENT CAMERA STREAM
+===================================================== */
 
-async function startCamera() {
+function stopCurrentStream() {
+
+  running = false;
+
+  processing = false;
+
+  if (stream) {
+
+    stream.getTracks().forEach(
+      track => track.stop()
+    );
+
+    stream = null;
+
+  }
+
+  camera.srcObject = null;
+
+}
+
+
+/* =====================================================
+   START CAMERA
+===================================================== */
+
+async function startCamera(deviceId = null) {
 
   try {
 
     status.textContent =
       "Opening camera...";
 
-    if (stream) {
+    stopCurrentStream();
 
-      stream.getTracks().forEach(track => {
-        track.stop();
-      });
-
-      stream = null;
-    }
+    let constraints;
 
 
-    stream =
-      await navigator.mediaDevices.getUserMedia({
+    /* Specific camera */
+
+    if (deviceId) {
+
+      constraints = {
 
         video: {
+
+          deviceId: {
+            exact: deviceId
+          },
+
           width: {
             ideal: 640
           },
@@ -96,15 +193,51 @@ async function startCamera() {
           height: {
             ideal: 480
           }
+
         },
 
         audio: false
-      });
+
+      };
+
+    }
 
 
-    camera.srcObject = stream;
+    /* Normal camera */
 
-    camera.style.display = "block";
+    else {
+
+      constraints = {
+
+        video: {
+
+          width: {
+            ideal: 640
+          },
+
+          height: {
+            ideal: 480
+          }
+
+        },
+
+        audio: false
+
+      };
+
+    }
+
+
+    stream =
+      await navigator.mediaDevices
+        .getUserMedia(constraints);
+
+
+    camera.srcObject =
+      stream;
+
+    camera.style.display =
+      "block";
 
 
     await new Promise(resolve => {
@@ -116,11 +249,12 @@ async function startCamera() {
 
         resolve();
 
-      } else {
+      }
 
-        camera.onloadedmetadata = () => {
-          resolve();
-        };
+      else {
+
+        camera.onloadedmetadata =
+          () => resolve();
 
       }
 
@@ -137,12 +271,31 @@ async function startCamera() {
       camera.videoHeight;
 
 
-    running = true;
+    currentCameraId =
+      deviceId;
+
+
+    /* Reset tracking */
+
+    previousHipY = null;
+
+    previousAnkleY = null;
+
+    movementHistory = [];
+
+    jumpState = "GROUND";
+
 
     frameNumber = 0;
 
-    previousHipY = null;
-    previousAnkleY = null;
+    fpsFrames = 0;
+
+    fpsTime = performance.now();
+
+
+    running = true;
+
+    processing = false;
 
 
     status.textContent =
@@ -151,11 +304,15 @@ async function startCamera() {
     bodyDisplay.textContent =
       "WAIT";
 
+    gestureDisplay.textContent =
+      "GESTURE: DETECTING";
+
 
     detectFrame();
 
+  }
 
-  } catch (error) {
+  catch (error) {
 
     console.error(
       "CAMERA ERROR:",
@@ -169,19 +326,254 @@ async function startCamera() {
     gestureDisplay.textContent =
       error.message ||
       "Camera failed";
+
   }
+
 }
 
 
-/* =========================
-   FRAME BY FRAME
-========================= */
+/* =====================================================
+   FIND BACK CAMERA
+===================================================== */
+
+async function findBackCamera() {
+
+  try {
+
+    status.textContent =
+      "Finding back camera...";
+
+
+    /*
+      Ask for permission first.
+
+      This makes camera labels
+      available on many phones.
+    */
+
+    const temporaryStream =
+      await navigator.mediaDevices
+        .getUserMedia({
+
+          video: true,
+
+          audio: false
+
+        });
+
+
+    temporaryStream
+      .getTracks()
+      .forEach(track => track.stop());
+
+
+    const devices =
+      await navigator.mediaDevices
+        .enumerateDevices();
+
+
+    const videoDevices =
+      devices.filter(
+        device =>
+          device.kind === "videoinput"
+      );
+
+
+    console.log(
+      "Available cameras:",
+      videoDevices
+    );
+
+
+    /*
+      Search camera names for
+      back / rear / environment
+    */
+
+    let backCamera =
+      videoDevices.find(device => {
+
+        const label =
+          device.label.toLowerCase();
+
+        return (
+          label.includes("back") ||
+          label.includes("rear") ||
+          label.includes("environment")
+        );
+
+      });
+
+
+    if (backCamera) {
+
+      status.textContent =
+        "📷 Back camera found";
+
+      await startCamera(
+        backCamera.deviceId
+      );
+
+      return;
+
+    }
+
+
+    /*
+      If the browser does not expose
+      camera labels, try environment mode.
+    */
+
+    status.textContent =
+      "Trying rear camera...";
+
+
+    stopCurrentStream();
+
+
+    try {
+
+      stream =
+        await navigator.mediaDevices
+          .getUserMedia({
+
+            video: {
+
+              facingMode: {
+                ideal: "environment"
+              },
+
+              width: {
+                ideal: 640
+              },
+
+              height: {
+                ideal: 480
+              }
+
+            },
+
+            audio: false
+
+          });
+
+
+      camera.srcObject =
+        stream;
+
+      camera.style.display =
+        "block";
+
+
+      await new Promise(resolve => {
+
+        if (
+          camera.readyState >= 2 &&
+          camera.videoWidth > 0
+        ) {
+
+          resolve();
+
+        }
+
+        else {
+
+          camera.onloadedmetadata =
+            () => resolve();
+
+        }
+
+      });
+
+
+      await camera.play();
+
+
+      overlay.width =
+        camera.videoWidth;
+
+      overlay.height =
+        camera.videoHeight;
+
+
+      running = true;
+
+      processing = false;
+
+
+      status.textContent =
+        "📷 REAR CAMERA WORKING";
+
+      bodyDisplay.textContent =
+        "WAIT";
+
+      gestureDisplay.textContent =
+        "GESTURE: DETECTING";
+
+
+      detectFrame();
+
+    }
+
+    catch (error) {
+
+      console.error(error);
+
+      status.textContent =
+        "❌ BACK CAMERA NOT FOUND";
+
+      gestureDisplay.textContent =
+        "Use START CAMERA instead.";
+
+    }
+
+  }
+
+  catch (error) {
+
+    console.error(error);
+
+    status.textContent =
+      "❌ CAMERA ERROR: " +
+      error.name;
+
+    gestureDisplay.textContent =
+      error.message ||
+      "Camera permission failed";
+
+  }
+
+}
+
+
+/* =====================================================
+   FRAME-BY-FRAME AI PROCESSING
+===================================================== */
 
 async function detectFrame() {
 
   if (!running) {
     return;
   }
+
+
+  /*
+    Prevent multiple AI predictions
+    from running at the same time.
+  */
+
+  if (processing) {
+
+    requestAnimationFrame(
+      detectFrame
+    );
+
+    return;
+
+  }
+
+
+  processing = true;
 
 
   frameNumber++;
@@ -206,101 +598,126 @@ async function detectFrame() {
     fpsFrames = 0;
 
     fpsTime = now;
+
   }
 
 
   try {
 
-    const poses =
-      await detector.estimatePoses(
-        camera
-      );
-
-
-    ctx.clearRect(
-      0,
-      0,
-      overlay.width,
-      overlay.height
-    );
-
-
     if (
-      poses.length === 0
+      detector &&
+      camera.readyState >= 2
     ) {
 
-      bodyDisplay.textContent =
-        "NO";
-
-      gestureDisplay.textContent =
-        "GESTURE: NO BODY";
-
-    } else {
-
-      const keypoints =
-        poses[0].keypoints;
+      const poses =
+        await detector.estimatePoses(
+          camera
+        );
 
 
-      drawKeypoints(
-        keypoints
+      ctx.clearRect(
+        0,
+        0,
+        overlay.width,
+        overlay.height
       );
 
 
-      bodyDisplay.textContent =
-        "YES";
+      if (
+        poses.length === 0
+      ) {
+
+        bodyDisplay.textContent =
+          "NO";
+
+        gestureDisplay.textContent =
+          "GESTURE: NO BODY";
+
+      }
+
+      else {
+
+        const keypoints =
+          poses[0].keypoints;
 
 
-      detectGesture(
-        keypoints
-      );
+        drawKeypoints(
+          keypoints
+        );
 
 
-      detectSkip(
-        keypoints
-      );
+        bodyDisplay.textContent =
+          "YES";
+
+
+        detectGesture(
+          keypoints
+        );
+
+
+        detectSkip(
+          keypoints
+        );
+
+      }
+
     }
 
+  }
 
-  } catch (error) {
+  catch (error) {
 
     console.error(
       "FRAME ERROR:",
       error
     );
+
   }
 
 
-  requestAnimationFrame(
-    detectFrame
-  );
+  processing = false;
+
+
+  if (running) {
+
+    requestAnimationFrame(
+      detectFrame
+    );
+
+  }
+
 }
 
 
-/* =========================
-   DRAW KEYPOINTS
-========================= */
+/* =====================================================
+   DRAW BODY KEYPOINTS
+===================================================== */
 
-function drawKeypoints(keypoints) {
+function drawKeypoints(
+  keypoints
+) {
 
   for (
-    const p of keypoints
+    const point of keypoints
   ) {
 
     if (
-      p.score < 0.35
+      point.score < 0.35
     ) {
+
       continue;
+
     }
 
 
     const x =
-      p.x *
+      point.x *
       overlay.width /
       camera.videoWidth;
 
 
     const y =
-      p.y *
+      point.y *
       overlay.height /
       camera.videoHeight;
 
@@ -319,39 +736,43 @@ function drawKeypoints(keypoints) {
       "#00ff88";
 
     ctx.fill();
+
   }
+
 }
 
 
-/* =========================
-   GET BODY POINT
-========================= */
+/* =====================================================
+   GET KEYPOINT
+===================================================== */
 
 function getPoint(
   keypoints,
   index
 ) {
 
-  const p =
+  const point =
     keypoints[index];
 
 
   if (
-    !p ||
-    p.score < 0.35
+    !point ||
+    point.score < 0.35
   ) {
 
     return null;
+
   }
 
 
-  return p;
+  return point;
+
 }
 
 
-/* =========================
+/* =====================================================
    GESTURE DETECTION
-========================= */
+===================================================== */
 
 function detectGesture(
   keypoints
@@ -389,23 +810,27 @@ function detectGesture(
       "GESTURE: PARTLY LOST";
 
     return;
+
   }
 
 
-  /* BOTH HANDS UP */
+  /* HANDS UP */
 
   if (
+
     leftWrist.y <
       leftShoulder.y - 0.10 &&
 
     rightWrist.y <
       rightShoulder.y - 0.10
+
   ) {
 
     gestureDisplay.textContent =
       "🖐️ HANDS UP";
 
     return;
+
   }
 
 
@@ -426,17 +851,21 @@ function detectGesture(
       "↔️ ARMS OUT";
 
     return;
+
   }
 
 
+  /* NORMAL */
+
   gestureDisplay.textContent =
     "🧍 NORMAL";
+
 }
 
 
-/* =========================
-   BASIC SKIP DETECTION
-========================= */
+/* =====================================================
+   SKIP DETECTION
+===================================================== */
 
 function detectSkip(
   keypoints
@@ -463,8 +892,13 @@ function detectSkip(
   ) {
 
     return;
+
   }
 
+
+  /*
+    Average hip position
+  */
 
   const hipY =
     (
@@ -472,6 +906,10 @@ function detectSkip(
       rightHip.y
     ) / 2;
 
+
+  /*
+    Average ankle position
+  */
 
   const ankleY =
     (
@@ -491,13 +929,15 @@ function detectSkip(
     const hipMovement =
       previousHipY - hipY;
 
+
     const ankleMovement =
       previousAnkleY - ankleY;
 
 
     movement =
-      hipMovement * 0.55 +
-      ankleMovement * 0.45;
+      hipMovement * 0.60 +
+      ankleMovement * 0.40;
+
   }
 
 
@@ -508,26 +948,90 @@ function detectSkip(
     ankleY;
 
 
-  const now =
-    performance.now();
+  /*
+    Store recent movement
+    for smoother detection.
+  */
+
+  movementHistory.push(
+    movement
+  );
 
 
   if (
-    jumpState === "GROUND" &&
-    movement > 0.008
+    movementHistory.length > 5
   ) {
 
-    jumpState = "AIR";
+    movementHistory.shift();
+
+  }
+
+
+  let averageMovement = 0;
+
+
+  for (
+    const value of movementHistory
+  ) {
+
+    averageMovement +=
+      value;
+
   }
 
 
   if (
-    jumpState === "AIR" &&
-    movement < -0.008
+    movementHistory.length > 0
   ) {
 
+    averageMovement /=
+      movementHistory.length;
+
+  }
+
+
+  const now =
+    performance.now();
+
+
+  /*
+    GOING UP
+  */
+
+  if (
+
+    jumpState === "GROUND" &&
+
+    averageMovement > 0.006
+
+  ) {
+
+    jumpState =
+      "AIR";
+
+  }
+
+
+  /*
+    COMING DOWN
+  */
+
+  if (
+
+    jumpState === "AIR" &&
+
+    averageMovement < -0.006
+
+  ) {
+
+    /*
+      Minimum time between skips.
+      Prevents multiple counts
+      from one jump.
+    */
+
     if (
-      now - lastSkipTime > 300
+      now - lastSkipTime > 250
     ) {
 
       skipCount++;
@@ -535,46 +1039,33 @@ function detectSkip(
       countDisplay.textContent =
         skipCount;
 
+
       lastSkipTime =
         now;
+
 
       gestureDisplay.textContent =
         "🦘 SKIP " +
         skipCount;
+
     }
 
 
     jumpState =
       "GROUND";
+
   }
+
 }
 
 
-/* =========================
-   STOP CAMERA
-========================= */
+/* =====================================================
+   STOP CAMERA BUTTON
+===================================================== */
 
 function stopCamera() {
 
-  running = false;
-
-
-  if (stream) {
-
-    stream
-      .getTracks()
-      .forEach(
-        track => track.stop()
-      );
-
-    stream = null;
-  }
-
-
-  camera.srcObject = null;
-
-  camera.style.display =
-    "none";
+  stopCurrentStream();
 
 
   ctx.clearRect(
@@ -585,20 +1076,27 @@ function stopCamera() {
   );
 
 
+  camera.style.display =
+    "none";
+
+
   status.textContent =
     "Camera stopped";
+
 
   bodyDisplay.textContent =
     "WAIT";
 
+
   gestureDisplay.textContent =
     "GESTURE: WAITING";
+
 }
 
 
-/* =========================
-   RESET
-========================= */
+/* =====================================================
+   RESET COUNTER
+===================================================== */
 
 function resetCounter() {
 
@@ -618,35 +1116,43 @@ function resetCounter() {
 
   previousAnkleY = null;
 
+  movementHistory = [];
 
   jumpState =
     "GROUND";
 
-  lastSkipTime =
-    0;
+
+  lastSkipTime = 0;
 
 
   gestureDisplay.textContent =
     "GESTURE: WAITING";
+
 }
 
 
-/* =========================
+/* =====================================================
    BUTTONS
-========================= */
+===================================================== */
 
 startBtn.onclick =
-  startCamera;
+  () => startCamera();
+
+
+backCameraBtn.onclick =
+  () => findBackCamera();
+
 
 stopBtn.onclick =
-  stopCamera;
+  () => stopCamera();
+
 
 resetBtn.onclick =
-  resetCounter;
+  () => resetCounter();
 
 
-/* =========================
+/* =====================================================
    START AI
-========================= */
+===================================================== */
 
 loadAI();

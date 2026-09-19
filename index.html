@@ -1,124 +1,89 @@
+
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
   <title>SkipFit AI</title>
 
   <style>
-    * {
-      box-sizing: border-box;
-    }
-
     body {
       margin: 0;
+      padding: 30px 15px;
       background: #07111f;
       color: white;
       font-family: Arial, sans-serif;
       text-align: center;
     }
 
-    header {
-      padding: 20px 10px;
-    }
-
-    h1 {
-      margin: 0;
-      font-size: 32px;
-    }
-
-    header p {
-      margin: 7px 0;
-      opacity: 0.7;
-    }
-
     .card {
-      width: 94%;
-      max-width: 700px;
+      max-width: 600px;
       margin: auto;
       background: #101f32;
-      padding: 15px;
+      padding: 20px;
       border-radius: 18px;
     }
 
+    h1 {
+      margin-top: 0;
+    }
+
     #status {
-      padding: 12px;
-      margin-bottom: 12px;
+      padding: 15px;
       background: #182b40;
       border-radius: 10px;
-      font-weight: bold;
-    }
-
-    .camera-box {
-      position: relative;
-      width: 100%;
-      background: #000;
-      border-radius: 15px;
-      overflow: hidden;
-    }
-
-    #camera {
-      display: none;
-      width: 100%;
-      aspect-ratio: 3 / 4;
-      object-fit: cover;
-    }
-
-    #overlay {
-      position: absolute;
-      left: 0;
-      top: 0;
-      width: 100%;
-      height: 100%;
-      pointer-events: none;
-    }
-
-    .info {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 7px;
-      margin-top: 10px;
-    }
-
-    .info div {
-      background: #182b40;
-      padding: 10px 4px;
-      border-radius: 9px;
-      font-size: 11px;
-    }
-
-    .label {
-      opacity: 0.65;
-    }
-
-    .value {
-      margin-top: 4px;
-      font-weight: bold;
-    }
-
-    #gesture {
-      margin-top: 12px;
-      padding: 13px;
-      background: #172c43;
-      border-radius: 10px;
-      font-weight: bold;
-    }
-
-    #count {
-      font-size: 65px;
-      font-weight: bold;
-      margin: 12px;
+      margin: 15px 0;
     }
 
     button {
       width: 100%;
       padding: 15px;
-      margin: 6px 0;
-      border: 0;
+      margin: 7px 0;
+      border: none;
       border-radius: 12px;
       background: #1677ff;
       color: white;
       font-size: 16px;
-      font-weight
+      font-weight: bold;
+    }
+
+    #count {
+      font-size: 60px;
+      font-weight: bold;
+      margin: 15px;
+    }
+  </style>
+</head>
+
+<body>
+
+  <div class="card">
+
+    <h1>SkipFit AI</h1>
+
+    <p>By Aditya Kumar Yadav</p>
+
+    <div id="status">
+      Website is working ✅
+    </div>
+
+    <div>
+      SKIPS
+      <div id="count">0</div>
+    </div>
+
+    <button onclick="testButton()">
+      TEST WEBSITE
+    </button>
+
+  </div>
+
+  <script>
+    function testButton() {
+      document.getElementById("status").textContent =
+        "JavaScript is working ✅";
+    }
+  </script>
+
+</body>
+</html>
